@@ -283,6 +283,7 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         let state = app.state::<AppState>();
         restore_window_state(app.handle(), &window, &state.settings_path, "window", 400, 300);
         let _ = window.show();
+        let _ = window.set_focus();
     }
 
     // Overlay: show once for WebView2 init, then park off-screen.

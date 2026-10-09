@@ -890,3 +890,117 @@
   color: var(--muted);
   font-style: italic;
 }
+
+/* ── Listings filter bar ── */
+.wfm-filter-row {
+  margin-bottom: 6px;
+}
+
+.wfm-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 2px 0 4px;
+}
+
+.wfm-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(48, 54, 61, 0.6);
+  border-radius: 5px;
+  padding: 2px;
+}
+
+.wfm-filter-chip {
+  background: none;
+  border: 1px solid transparent;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  white-space: nowrap;
+}
+.wfm-filter-chip:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+}
+.wfm-filter-chip.active {
+  background: rgba(56, 139, 253, 0.16);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+.wfm-filter-chip.chip-sell.active {
+  background: rgba(63, 185, 80, 0.16);
+  border-color: var(--green);
+  color: var(--green);
+}
+.wfm-filter-chip.chip-buy.active {
+  background: rgba(56, 139, 253, 0.16);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.wfm-filter-chip.chip-sort.active {
+  background: rgba(192, 160, 96, 0.16);
+  border-color: #c0a060;
+  color: #ffd166;
+}
+
+.wfm-plat-filter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(48, 54, 61, 0.7);
+  border-radius: 5px;
+  padding: 2px 6px;
+}
+.wfm-plat-label {
+  font-size: 11px;
+  color: #c0a060;
+  font-weight: 700;
+  margin-right: 2px;
+  user-select: none;
+}
+.wfm-plat-input {
+  width: 44px;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 11px;
+  color: var(--text);
+  padding: 1px 2px;
+  text-align: center;
+}
+.wfm-plat-input::placeholder {
+  color: rgba(139, 148, 158, 0.55);
+}
+.wfm-plat-sep {
+  color: var(--muted);
+  font-size: 11px;
+  user-select: none;
+}
+
+.wfm-filter-clear {
+  background: none;
+  border: 1px solid rgba(248, 81, 73, 0.4);
+  color: var(--red);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+  margin-left: auto;
+}
+.wfm-filter-clear:hover {
+  background: rgba(248, 81, 73, 0.12);
+  border-color: var(--red);
+}
+

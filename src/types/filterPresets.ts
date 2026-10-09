@@ -71,13 +71,16 @@ function parseMarketFilters(value: unknown): MarketPresetFilters | null {
     !isStringArray(value.ownership, ["owned", "notowned"]) ||
     !isStringArray(value.conditions, ["dupes", "itemowned", "fullset", "hasparts"]) ||
     !isStringArray(value.vault, ["vaulted", "unvaulted"]) ||
-    !["plat", "ducats", "az", "za"].includes(value.sortMode as string)) return null;
+    !["plat", "plat-asc", "ducats", "az", "za"].includes(value.sortMode as string)) return null;
   return {
+    category: typeof value.category === "string" ? value.category : "all",
     search: value.search,
     ownership: value.ownership as MarketPresetFilters["ownership"],
     conditions: value.conditions as MarketPresetFilters["conditions"],
     vault: value.vault as MarketPresetFilters["vault"],
     sortMode: value.sortMode as MarketPresetFilters["sortMode"],
+    minPlat: typeof value.minPlat === "number" ? value.minPlat : null,
+    maxPlat: typeof value.maxPlat === "number" ? value.maxPlat : null,
   };
 }
 

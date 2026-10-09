@@ -8,11 +8,14 @@ import WfmTrading from "./WfmTrading";
 import ItemMarketPopup from "./ItemMarketPopup";
 import { matchesSearchTerms, splitSearchTerms } from "../lib/search";
 import { TAURI_COMMANDS, TAURI_EVENTS } from "../constants/tauri";
+import { PREFERENCE_KEYS } from "../constants/preferences";
+import { ViewToggle } from "../shared/ViewToggle";
 import { useCatalog } from "../hooks/useCatalog";
 import { useMarketData } from "../hooks/useMarketData";
 import type { CatalogItem, CraftingJob, InventoryItem, RecipeComponent, RecipeMap } from "../types/items";
 import type { MarketFilters } from "../types/filters";
 import type { FilterPresetModule, FilterPresetSettings } from "../types/filterPresets";
+import type { ViewMode } from "../types/ui";
 import type { ModCopy } from "../types/inventory";
 import type { BlobRivenEntry, BlobRivenStat, RivenSellQueueItem, WfmItemInfo, WfmPrice, WfmPriceUpdate, WfmRivenAttribute } from "../types/market";
 import type { WfmCreateOrderArgs, WfmCreateRivenAuctionArgs, WfmSession } from "../types/tauri";
@@ -81,15 +84,18 @@ function flattenRecipeCounts(comps: RecipeComponent[], multiplier: number, out: 
   }
 }
 
+const PRIME_SET_CATEGORIES = ["all", "Warframes", "Primary", "Secondary", "Melee", "Companions", "Archwing"] as const;
+
 // ─── Set card ─────────────────────────────────────────────────────────────────
 
 interface SetPart { item: CatalogItem; qty: number; required_count: number; sellMedian?: number; loading: boolean; urlName: string; }
 
-function SetCard({ setKey, parts, parentItem, setPrice, setPriceLoading, pricesFetched, crafting, onCardClick, onPartClick }: {
+function SetCard({ setKey, parts, parentItem, setPrice, setPriceLoading, pricesFetched, crafting, onCardClick, onPartClick, view }: {
   setKey: string; parts: SetPart[]; parentItem?: CatalogItem;
   setPrice?: WfmPrice; setPriceLoading: boolean; pricesFetched: boolean;
   crafting: CraftingJob[]; onCardClick?: () => void;
   onPartClick?: (urlName: string, displayName: string, imageName?: string) => void;
+  view: ViewMode;
 }) {
   const totalDucats  = parts.reduce((s, p) => s + (p.item.ducats ?? 0) * p.qty, 0);
   const ownedCount   = parts.filter(p => p.qty > 0).length;
@@ -99,6 +105,151 @@ function SetCard({ setKey, parts, parentItem, setPrice, setPriceLoading, pricesF
     c.unique_name === parentItem?.unique_name ||
     parts.some(p => p.item.unique_name === c.unique_name)
   );
+
+  if (view === "icons") {
+    return (
+      <div
+        className={`market-icon-card${isComplete ? " market-card-complete" : ""}`}
+        onClick={onCardClick}
+        title={`${setKey} (${ownedCount}/${parts.length} parts)${setPrice?.sell_median ? ` · ${fmtPt(setPrice.sell_median)} plat` : ""}`}
+      >
+        <div style={{ position: "relative" }}>
+          <ItemImg imageName={parentItem?.image_name} size={64} fallbackText="P" />
+          {isCrafting && (
+            <span style={{ position: "absolute", top: -4, right: -6, fontSize: 13 }} title="Building in Foundry">⚒</span>
+          )}
+        </div>
+        <div className="market-icon-name">{setKey}</div>
+        <div className="market-set-badges">
+          {isComplete && <span className="mset-badge mset-complete">✓ Complete</span>}
+          {!isComplete && <span className="mset-badge mset-parts">{ownedCount}/{parts.length}</span>}
+          {hasDupes && <span className="mset-badge mset-dupes">+ Dupes</span>}
+        </div>
+        <div className="market-icon-price">
+          <PlatIcon size={12} />
+          <span>{setPrice?.sell_median ? fmtPt(setPrice.sell_median) : "—"}</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (view === "list" || view === "list-compact") {
+    const isCompact = view === "list-compact";
+    return (
+      <div
+        className={`market-list-row${isComplete ? " market-card-complete" : ""}`}
+        onClick={onCardClick}
+        title="View set orders & prices"
+      >
+        {!isCompact && (
+          <div className="market-list-img">
+            <ItemImg imageName={parentItem?.image_name} size={28} fallbackText="P" />
+          </div>
+        )}
+        <div className="market-list-name">
+          {setKey}
+          {isCrafting && <span title="Building in Foundry" style={{ marginLeft: 4, fontSize: 11 }}>⚒</span>}
+        </div>
+        {parentItem?.category && (
+          <span className="market-list-cat">{parentItem.category}</span>
+        )}
+        <div className="market-list-badges">
+          {isComplete && <span className="mset-badge mset-complete">✓ Complete</span>}
+          {!isComplete && <span className="mset-badge mset-parts">{ownedCount}/{parts.length}</span>}
+          {hasDupes && <span className="mset-badge mset-dupes">+ Dupes</span>}
+        </div>
+        <div className="market-list-parts">
+          {parts.map(p => {
+            const qty = p.qty;
+            const qtyCls = qty === 0 ? "mqty-zero" : qty === 1 ? "mqty-one" : "mqty-dupe";
+            return (
+              <span
+                key={p.item.unique_name}
+                className="market-list-part-pill"
+                onClick={e => {
+                  if (onPartClick) {
+                    e.stopPropagation();
+                    onPartClick(p.urlName, p.item.name, p.item.image_name ?? undefined);
+                  }
+                }}
+                title={`Click for ${p.item.name} orders`}
+              >
+                <span>{partLabel(p.item.name, setKey)}</span>
+                <span className={`mpart-qty ${qtyCls}`} style={{ padding: "0 3px", fontSize: 10, minWidth: 14 }}>{qty}</span>
+              </span>
+            );
+          })}
+        </div>
+        {totalDucats > 0 && (
+          <div className="market-list-ducats" title="Owned ducats">
+            <DucatIcon size={12} />
+            <span>{fmt(totalDucats)}</span>
+          </div>
+        )}
+        <div className="market-list-plat" title="Set sell median">
+          <PlatIcon size={12} />
+          <span>{setPrice?.sell_median ? `${fmtPt(setPrice.sell_median)}p` : "—"}</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (view === "text-cards") {
+    return (
+      <div
+        className={`market-text-card${isComplete ? " market-card-complete" : ""}`}
+        onClick={onCardClick}
+      >
+        <div className="market-tc-header">
+          <span className="market-tc-name">
+            {setKey}
+            {isCrafting && <span style={{ marginLeft: 4 }}>⚒</span>}
+          </span>
+          <div className="market-tc-prices">
+            {totalDucats > 0 && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 2, color: "#f0c040", fontWeight: 600 }}>
+                <DucatIcon size={11} /> {fmt(totalDucats)}
+              </span>
+            )}
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 2, color: "#b39ddb", fontWeight: 700 }}>
+              <PlatIcon size={11} /> {setPrice?.sell_median ? `${fmtPt(setPrice.sell_median)}p` : "—"}
+            </span>
+          </div>
+        </div>
+        <div className="market-set-badges" style={{ flexDirection: "row", justifyContent: "flex-start" }}>
+          {isComplete && <span className="mset-badge mset-complete">✓ Complete</span>}
+          {!isComplete && <span className="mset-badge mset-parts">{ownedCount}/{parts.length}</span>}
+          {hasDupes && <span className="mset-badge mset-dupes">+ Dupes</span>}
+          {parentItem?.category && <span className="market-list-cat">{parentItem.category}</span>}
+        </div>
+        <div className="market-tc-parts">
+          {parts.map(p => {
+            const qty = p.qty;
+            const qtyCls = qty === 0 ? "mqty-zero" : qty === 1 ? "mqty-one" : "mqty-dupe";
+            return (
+              <div
+                key={p.item.unique_name}
+                className="market-tc-part-row"
+                onClick={e => {
+                  if (onPartClick) {
+                    e.stopPropagation();
+                    onPartClick(p.urlName, p.item.name, p.item.image_name ?? undefined);
+                  }
+                }}
+              >
+                <span>{partLabel(p.item.name, setKey)}</span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <span style={{ color: "#f0c040", fontSize: 9 }}>{p.item.ducats ?? "—"}d</span>
+                  <span style={{ color: "#b39ddb", fontSize: 9 }}>{p.sellMedian ? `${fmtPt(p.sellMedian)}p` : "—"}</span>
+                  <span className={`mpart-qty ${qtyCls}`} style={{ fontSize: 9, minWidth: 14, padding: "0 2px" }}>{qty}</span>
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`market-card${isComplete ? " market-card-complete" : ""}`}>
@@ -177,7 +328,10 @@ export default function MarketHelper({ inventory, refreshKey, crafting, onWfmLog
   const [popup, setPopup] = useState<{ urlName: string; displayName: string; imageName?: string; prefillModRank?: number } | null>(null);
   const [recipeCountMap, setRecipeCountMap]       = useState<Map<string, number>>(new Map());
   const [rivens, setRivens]               = useState<BlobRivenEntry[]>([]);
-  const { search, ownership, conditions, vault, sortMode, activeMarketTab } = filters;
+  const [marketView, setMarketView]       = useState<ViewMode>(() =>
+    (localStorage.getItem(PREFERENCE_KEYS.MARKET_VIEW) as ViewMode | null) ?? "cards"
+  );
+  const { search, ownership, conditions, vault, sortMode, activeMarketTab, category = "all", minPlat, maxPlat } = filters;
   const set = <K extends keyof MarketFilters>(k: K, v: MarketFilters[K]) => onFiltersChange({ ...filters, [k]: v });
 
   // Seed live prices map from shared cached prices on first load
@@ -418,8 +572,13 @@ export default function MarketHelper({ inventory, refreshKey, crafting, onWfmLog
     return Array.from(sets.entries())
       .filter(([key]) => matchesSearchTerms(searchTerms, key))
       .filter(([key, parts]) => {
-        const ownedAny    = parts.some(p => (inventory[p.unique_name]?.quantity ?? 0) > 0);
         const parent      = parentItems.get(key);
+        if (category && category !== "all") {
+          const itemCat = parent?.category ?? parts[0]?.category;
+          if (itemCat !== category) return false;
+        }
+
+        const ownedAny    = parts.some(p => (inventory[p.unique_name]?.quantity ?? 0) > 0);
         // "Item owned" = the fully built item appears in inventory under its display name.
         // inventory[key] uses the name-based index (e.g. "Ash Prime" → InventoryItem).
         const isItemOwned = (inventory[key]?.quantity ?? 0) > 0;
@@ -452,6 +611,18 @@ export default function MarketHelper({ inventory, refreshKey, crafting, onWfmLog
           if (vault.includes("unvaulted") &&  isVaulted) return false;
         }
 
+        // Group 4: Plat value filter
+        if (minPlat != null || maxPlat != null) {
+          const setUrl = wfmLookup.get(normalizeForWfm(key + " Set")) ?? normalizeForWfm(key + " Set");
+          const p = prices.get(setUrl)?.sell_median ?? null;
+          if (minPlat != null && !isNaN(minPlat)) {
+            if (p === null || p < minPlat) return false;
+          }
+          if (maxPlat != null && !isNaN(maxPlat)) {
+            if (p === null || p > maxPlat) return false;
+          }
+        }
+
         return true;
       })
       .sort(([aKey, aParts], [bKey, bParts]) => {
@@ -467,10 +638,18 @@ export default function MarketHelper({ inventory, refreshKey, crafting, onWfmLog
           };
           return getSetPrice(bKey) - getSetPrice(aKey) || aKey.localeCompare(bKey);
         }
+        if (sortMode === "plat-asc") {
+          const getSetPrice = (key: string) => {
+            const url = wfmLookup.get(normalizeForWfm(key + " Set")) ?? normalizeForWfm(key + " Set");
+            const p = prices.get(url)?.sell_median;
+            return p != null ? p : Infinity;
+          };
+          return getSetPrice(aKey) - getSetPrice(bKey) || aKey.localeCompare(bKey);
+        }
         if (sortMode === "za") return bKey.localeCompare(aKey);
         return aKey.localeCompare(bKey); // az
       });
-  }, [sets, inventory, ownership, conditions, vault, sortMode, search, parentItems, prices, wfmLookup, recipeCountMap]);
+  }, [sets, inventory, ownership, conditions, vault, sortMode, search, category, minPlat, maxPlat, parentItems, prices, wfmLookup, recipeCountMap]);
 
   return (
     <div className="market-helper">
@@ -533,9 +712,19 @@ export default function MarketHelper({ inventory, refreshKey, crafting, onWfmLog
 
       {activeMarketTab === "sets" && <>
       <div className="market-header">
-        <input className="foundry-search" style={{ width: 200 }} placeholder="Search sets (comma-separated)…"
+        <input className="foundry-search" style={{ width: 180 }} placeholder="Search sets (comma-separated)…"
           value={search} onChange={e => set("search", e.target.value)} />
         <div className="filter-bar" style={{ border: "none", padding: 0, flex: 1, flexWrap: "wrap" }}>
+          {PRIME_SET_CATEGORIES.map(cat => (
+            <button
+              key={cat}
+              className={`fchip ${(category || "all") === cat ? "fchip-on" : ""}`}
+              onClick={() => set("category", cat)}
+            >
+              {cat === "all" ? "All" : cat}
+            </button>
+          ))}
+          <span className="fbar-sep"/>
           <button className={`fchip ${ownership.includes("owned")    ? "fchip-on" : ""}`} onClick={() => set("ownership", toggle(ownership, "owned"))}>Owned</button>
           <button className={`fchip ${ownership.includes("notowned") ? "fchip-on" : ""}`} onClick={() => set("ownership", toggle(ownership, "notowned"))}>Not Owned</button>
           <span className="fbar-sep"/>
@@ -550,16 +739,58 @@ export default function MarketHelper({ inventory, refreshKey, crafting, onWfmLog
           <FilterPresets module="market" {...{ filters, onFiltersChange, filterPresets, onFilterPresetsChange, onOpenSettings }} />
           <span className="fbar-sep"/>
           <span className="fbar-label">Sort:</span>
-          <button className={`fchip ${sortMode === "plat"   ? "fchip-on" : ""}`} onClick={() => set("sortMode", "plat")}>Most Plat</button>
-          <button className={`fchip ${sortMode === "ducats" ? "fchip-on" : ""}`} onClick={() => set("sortMode", "ducats")}>Most Ducats</button>
-          <button className={`fchip ${sortMode === "az"     ? "fchip-on" : ""}`} onClick={() => set("sortMode", "az")}>A–Z</button>
-          <button className={`fchip ${sortMode === "za"     ? "fchip-on" : ""}`} onClick={() => set("sortMode", "za")}>Z–A</button>
+          <button className={`fchip ${sortMode === "plat"     ? "fchip-on" : ""}`} onClick={() => set("sortMode", "plat")}>Most Plat</button>
+          <button className={`fchip ${sortMode === "plat-asc" ? "fchip-on" : ""}`} onClick={() => set("sortMode", "plat-asc")}>Lowest Plat</button>
+          <button className={`fchip ${sortMode === "ducats"   ? "fchip-on" : ""}`} onClick={() => set("sortMode", "ducats")}>Most Ducats</button>
+          <button className={`fchip ${sortMode === "az"       ? "fchip-on" : ""}`} onClick={() => set("sortMode", "az")}>A–Z</button>
+          <button className={`fchip ${sortMode === "za"       ? "fchip-on" : ""}`} onClick={() => set("sortMode", "za")}>Z–A</button>
+          <span className="fbar-sep"/>
+          <div className="wfm-plat-filter" title="Filter sets by platinum value range">
+            <span className="wfm-plat-label">🪙 Plat</span>
+            <input
+              className="wfm-plat-input"
+              type="text"
+              inputMode="numeric"
+              placeholder="Min"
+              value={minPlat != null ? String(minPlat) : ""}
+              onChange={e => {
+                const val = e.target.value.replace(/[^0-9]/g, "");
+                set("minPlat", val ? Number(val) : null);
+              }}
+            />
+            <span className="wfm-plat-sep">–</span>
+            <input
+              className="wfm-plat-input"
+              type="text"
+              inputMode="numeric"
+              placeholder="Max"
+              value={maxPlat != null ? String(maxPlat) : ""}
+              onChange={e => {
+                const val = e.target.value.replace(/[^0-9]/g, "");
+                set("maxPlat", val ? Number(val) : null);
+              }}
+            />
+          </div>
+          {(minPlat != null || maxPlat != null) && (
+            <button
+              className="wfm-filter-clear"
+              style={{ padding: "1px 6px", fontSize: 10 }}
+              onClick={() => { set("minPlat", null); set("maxPlat", null); }}
+              title="Clear plat range filter"
+            >
+              ✕
+            </button>
+          )}
           <span className="fbar-sep"/>
           <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--muted)" }}>{visibleSets.length} sets</span>
+          <ViewToggle view={marketView} onChange={v => { setMarketView(v); localStorage.setItem(PREFERENCE_KEYS.MARKET_VIEW, v); }} />
           <HelpTip items={[
-            { swatch: "rgba(240,192,64,.5)", icon: "✓", label: "Complete set", desc: "Gold border + ✓ — all parts in inventory" },
-            { icon: "+",  label: "+ Dupes",    desc: "Extra copies of at least one part" },
-            { icon: "⚒",  label: "⚒ Building", desc: "Item is currently crafting in Foundry" },
+            { swatch: "rgba(63,185,80,.5)", icon: "✓", label: "Complete set", desc: "Green border + ✓ — all parts in inventory" },
+            { swatch: "rgba(240,192,64,.5)", icon: "+", label: "+ Dupes", desc: "Gold/yellow — extra parts owned beyond craft count" },
+            { swatch: "rgba(248,81,73,.5)", icon: "0", label: "Missing part", desc: "Red box / dimmed row — 0 owned" },
+            { icon: "⚒", label: "⚒ Building", desc: "Item currently crafting in Foundry" },
+            { swatch: "#b39ddb", label: "Platinum", desc: "WFM median sell price in platinum" },
+            { swatch: "#f0c040", label: "Ducats", desc: "Void Trader (Baro) ducat value" },
           ]} />
         </div>
       </div>
@@ -574,7 +805,7 @@ export default function MarketHelper({ inventory, refreshKey, crafting, onWfmLog
         {wfmItems.length > 0 && <span style={{ color: "var(--green)", fontSize: 11 }}>· {wfmItems.length.toLocaleString()} items from warframe.market</span>}
       </div>
 
-      <div className="market-grid">
+      <div className={`market-grid market-grid-${marketView}`}>
         {visibleSets.length === 0 ? (
           <div className="empty-msg" style={{ gridColumn: "1/-1" }}>No sets match. Adjust filters or own some prime parts first.</div>
         ) : visibleSets.map(([setKey, parts]) => {
@@ -602,6 +833,7 @@ export default function MarketHelper({ inventory, refreshKey, crafting, onWfmLog
               setPriceLoading={false}
               pricesFetched={prices.size > 0}
               crafting={crafting}
+              view={marketView}
               onCardClick={() => {
                 invoke("wfm_queue_price_priority", { urlName: setUrl }).catch(() => {});
                 setPopup({ urlName: setUrl, displayName: setKey + " Set", imageName: parent?.image_name ?? undefined });
@@ -645,12 +877,17 @@ function ModsTab({ catalog: allCatalog, inventory, wfmLookup, prices, modCopiesM
   const [search, setSearch]       = useState("");
   const [catFilter, setCatFilter] = useState<"all" | "mods" | "arcanes">("all");
   const [ownFilter, setOwnFilter] = useState<"all" | "owned" | "notowned">("all");
-  const [sortMode, setSortMode]   = useState<"qty" | "plat" | "az" | "za">("qty");
+  const [sortMode, setSortMode]   = useState<"qty" | "plat" | "plat-asc" | "az" | "za">("qty");
+  const [minPlat, setMinPlat]     = useState<string>("");
+  const [maxPlat, setMaxPlat]     = useState<string>("");
   const [page, setPage]           = useState(0);
 
   const catalog = useMemo(() =>
     allCatalog.filter(i => i.category === "Mods" || i.category === "Arcanes"),
   [allCatalog]);
+
+  const minP = minPlat.trim() !== "" ? Number(minPlat) : null;
+  const maxP = maxPlat.trim() !== "" ? Number(maxPlat) : null;
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -662,6 +899,18 @@ function ModsTab({ catalog: allCatalog, inventory, wfmLookup, prices, modCopiesM
         if (ownFilter === "notowned" && qty  >  0) return false;
         if (catFilter === "mods"    && i.category !== "Mods")    return false;
         if (catFilter === "arcanes" && i.category !== "Arcanes") return false;
+
+        if (minP !== null || maxP !== null) {
+          const u = wfmLookup.get(normalizeForWfm(i.name));
+          const p = u ? (prices.get(u)?.sell_median ?? null) : null;
+          if (minP !== null && !isNaN(minP)) {
+            if (p === null || p < minP) return false;
+          }
+          if (maxP !== null && !isNaN(maxP)) {
+            if (p === null || p > maxP) return false;
+          }
+        }
+
         return true;
       })
       .sort((a, b) => {
@@ -677,12 +926,19 @@ function ModsTab({ catalog: allCatalog, inventory, wfmLookup, prices, modCopiesM
           const bp = bu ? (prices.get(bu)?.sell_median ?? 0) : 0;
           return bp - ap || a.name.localeCompare(b.name);
         }
+        if (sortMode === "plat-asc") {
+          const au = wfmLookup.get(normalizeForWfm(a.name));
+          const bu = wfmLookup.get(normalizeForWfm(b.name));
+          const ap = au && prices.get(au)?.sell_median != null ? prices.get(au)!.sell_median! : Infinity;
+          const bp = bu && prices.get(bu)?.sell_median != null ? prices.get(bu)!.sell_median! : Infinity;
+          return ap - bp || a.name.localeCompare(b.name);
+        }
         if (sortMode === "za") return b.name.localeCompare(a.name);
         return a.name.localeCompare(b.name);
       });
-  }, [catalog, inventory, search, ownFilter, catFilter, sortMode, prices, wfmLookup]);
+  }, [catalog, inventory, search, ownFilter, catFilter, sortMode, minP, maxP, prices, wfmLookup]);
 
-  useEffect(() => { setPage(0); }, [search, catFilter, ownFilter, sortMode]);
+  useEffect(() => { setPage(0); }, [search, catFilter, ownFilter, sortMode, minPlat, maxPlat]);
 
   const totalPages = Math.ceil(filtered.length / MODS_PAGE_SIZE);
   const pageItems  = useMemo(
@@ -717,10 +973,42 @@ function ModsTab({ catalog: allCatalog, inventory, wfmLookup, prices, modCopiesM
           <button className={`fchip ${ownFilter === "notowned" ? "fchip-on" : ""}`} onClick={() => setOwnFilter("notowned")}>Not Owned</button>
           <span className="fbar-sep"/>
           <span className="fbar-label">Sort:</span>
-          <button className={`fchip ${sortMode === "qty"  ? "fchip-on" : ""}`} onClick={() => setSortMode("qty")}>Most Owned</button>
-          <button className={`fchip ${sortMode === "plat" ? "fchip-on" : ""}`} onClick={() => setSortMode("plat")}>Most Plat</button>
-          <button className={`fchip ${sortMode === "az"   ? "fchip-on" : ""}`} onClick={() => setSortMode("az")}>A–Z</button>
-          <button className={`fchip ${sortMode === "za"   ? "fchip-on" : ""}`} onClick={() => setSortMode("za")}>Z–A</button>
+          <button className={`fchip ${sortMode === "qty"      ? "fchip-on" : ""}`} onClick={() => setSortMode("qty")}>Most Owned</button>
+          <button className={`fchip ${sortMode === "plat"     ? "fchip-on" : ""}`} onClick={() => setSortMode("plat")}>Most Plat</button>
+          <button className={`fchip ${sortMode === "plat-asc" ? "fchip-on" : ""}`} onClick={() => setSortMode("plat-asc")}>Lowest Plat</button>
+          <button className={`fchip ${sortMode === "az"       ? "fchip-on" : ""}`} onClick={() => setSortMode("az")}>A–Z</button>
+          <button className={`fchip ${sortMode === "za"       ? "fchip-on" : ""}`} onClick={() => setSortMode("za")}>Z–A</button>
+          <span className="fbar-sep"/>
+          <div className="wfm-plat-filter" title="Filter mods & arcanes by platinum value range">
+            <span className="wfm-plat-label">🪙 Plat</span>
+            <input
+              className="wfm-plat-input"
+              type="text"
+              inputMode="numeric"
+              placeholder="Min"
+              value={minPlat}
+              onChange={e => setMinPlat(e.target.value.replace(/[^0-9]/g, ""))}
+            />
+            <span className="wfm-plat-sep">–</span>
+            <input
+              className="wfm-plat-input"
+              type="text"
+              inputMode="numeric"
+              placeholder="Max"
+              value={maxPlat}
+              onChange={e => setMaxPlat(e.target.value.replace(/[^0-9]/g, ""))}
+            />
+          </div>
+          {(minPlat !== "" || maxPlat !== "") && (
+            <button
+              className="wfm-filter-clear"
+              style={{ padding: "1px 6px", fontSize: 10, marginLeft: 4 }}
+              onClick={() => { setMinPlat(""); setMaxPlat(""); }}
+              title="Clear plat filter"
+            >
+              ✕
+            </button>
+          )}
         </div>
       </div>
 
@@ -1428,6 +1716,7 @@ const RivensTab = memo(function RivensTab({ rivens, catalog, wfmUsername, onAuct
   const [dispositions, setDispositions] = useState<Record<string, number>>({});
   const [sellTarget,   setSellTarget]   = useState<BlobRivenEntry | null>(null);
   const [sellVeiled,   setSellVeiled]   = useState<BlobRivenEntry | null>(null);
+  const [search,       setSearch]       = useState("");
   const [selectedIds,  setSelectedIds]  = useState<Set<string>>(new Set());
   const [showTemplateModal, setShowTemplateModal] = useState(false);
 
@@ -1455,6 +1744,33 @@ const RivensTab = memo(function RivensTab({ rivens, catalog, wfmUsername, onAuct
   const revealed   = rivens.filter(r => r.riven_state === "revealed");
   const unlocked   = rivens.filter(r => r.riven_state === "unlocked" || (!r.riven_state && r.compat !== null));
 
+  const q = search.trim().toLowerCase();
+  const filteredUnlocked = useMemo(() => {
+    if (!q) return unlocked;
+    return unlocked.filter(r => {
+      const weaponName = (r.compat ? (pathToName[r.compat] ?? r.compat.split("/").pop() ?? r.compat) : "").toLowerCase();
+      const modName = (r.mod_name || rivenModName(r)).toLowerCase();
+      return weaponName.includes(q) || modName.includes(q);
+    });
+  }, [unlocked, q, pathToName]);
+
+  const filteredRevealed = useMemo(() => {
+    if (!q) return revealed;
+    return revealed.filter(r => {
+      const cat = rivenCategory(r.item_type).toLowerCase();
+      const challenge = formatChallengeName(r.challenge_type, r.challenge_complication).toLowerCase();
+      return cat.includes(q) || challenge.includes(q);
+    });
+  }, [revealed, q]);
+
+  const filteredUnrevealed = useMemo(() => {
+    if (!q) return unrevealed;
+    return unrevealed.filter(r => {
+      const cat = rivenCategory(r.item_type).toLowerCase();
+      return cat.includes(q);
+    });
+  }, [unrevealed, q]);
+
   const sellTargetWeaponName = sellTarget?.compat
     ? (pathToName[sellTarget.compat] ?? sellTarget.compat.split("/").pop() ?? sellTarget.compat)
     : "";
@@ -1463,12 +1779,29 @@ const RivensTab = memo(function RivensTab({ rivens, catalog, wfmUsername, onAuct
 
   return (
     <div className="rivens-tab">
+      <div className="market-header" style={{ padding: "6px 8px 8px" }}>
+        <input
+          className="foundry-search"
+          style={{ width: 220 }}
+          placeholder="Search rivens by weapon or name…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        {search && (
+          <button
+            className="wfm-filter-clear"
+            style={{ marginLeft: 6, padding: "2px 8px", fontSize: 11 }}
+            onClick={() => setSearch("")}
+          >
+            ✕ Reset
+          </button>
+        )}
+      </div>
 
-
-      {unlocked.length > 0 && (
+      {filteredUnlocked.length > 0 && (
         <section>
           <div className="rivens-section-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span>Riven ({unlocked.length})</span>
+            <span>Riven ({filteredUnlocked.length})</span>
             {selectedIds.size > 0 && (
               <button
                 className="btn-create-sell-template"
@@ -1496,9 +1829,8 @@ const RivensTab = memo(function RivensTab({ rivens, catalog, wfmUsername, onAuct
               </button>
             </div>
           )}
-
           <div className="rivens-list">
-            {unlocked.map((r, i) => {
+            {filteredUnlocked.map((r, i) => {
               const weaponName = r.compat ? (pathToName[r.compat] ?? r.compat.split("/").pop() ?? r.compat) : "Unknown";
               const disp = r.compat ? (dispositions[r.compat] ?? 1.0) : 1.0;
               const cat  = rivenCategory(r.item_type);
@@ -1552,11 +1884,11 @@ const RivensTab = memo(function RivensTab({ rivens, catalog, wfmUsername, onAuct
         </section>
       )}
 
-      {revealed.length > 0 && (
+      {filteredRevealed.length > 0 && (
         <section>
-          <div className="rivens-section-header">Revealed Riven ({revealed.length})</div>
+          <div className="rivens-section-header">Revealed Riven ({filteredRevealed.length})</div>
           <div className="rivens-list">
-            {revealed.map((r, i) => {
+            {filteredRevealed.map((r, i) => {
               const cat = rivenCategory(r.item_type);
               const challenge = formatChallengeName(r.challenge_type, r.challenge_complication);
               return (
@@ -1572,11 +1904,11 @@ const RivensTab = memo(function RivensTab({ rivens, catalog, wfmUsername, onAuct
         </section>
       )}
 
-      {unrevealed.length > 0 && (
+      {filteredUnrevealed.length > 0 && (
         <section>
-          <div className="rivens-section-header">Unrevealed Riven ({unrevealed.reduce((s, r) => s + r.count, 0)})</div>
+          <div className="rivens-section-header">Unrevealed Riven ({filteredUnrevealed.reduce((s, r) => s + r.count, 0)})</div>
           <div className="rivens-list">
-            {unrevealed.map((r, i) => (
+            {filteredUnrevealed.map((r, i) => (
               <div key={i} className="riven-card riven-veiled">
                 <div className="riven-card-header">
                   <span className="riven-weapon">{rivenCategory(r.item_type)} Riven Mod</span>

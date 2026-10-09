@@ -426,6 +426,10 @@ function ListingsPanel({ username: _username, itemIdMap, wfmItems, imageMap, auc
   const [orders, setOrders] = useState<{ sell: WfmManagedOrder[]; buy: WfmManagedOrder[] }>({ sell: [], buy: [] });
   const [loading, setLoading] = useState(true);
   const [search, setSearch]   = useState("");
+  const [typeFilter, setTypeFilter] = useState<"all" | "sell" | "buy">("all");
+  const [minPlat, setMinPlat] = useState<string>("");
+  const [maxPlat, setMaxPlat] = useState<string>("");
+  const [sortBy, setSortBy]   = useState<"default" | "plat-asc" | "plat-desc" | "name">("default");
   const [editing, setEditing] = useState<{ id: string; urlName: string; name: string; imageName?: string; pt: number; qty: number; visible: boolean } | null>(null);
 
   const nameToUrl = useMemo(() =>
@@ -459,14 +463,6 @@ function ListingsPanel({ username: _username, itemIdMap, wfmItems, imageMap, auc
     loadOrders();
   };
 
-  const setAllOrdersVisible = async (vis: boolean) => {
-    const all = [...orders.sell, ...orders.buy];
-    await Promise.all(all.map(o =>
-      invokeWfm("wfm_update_order", { orderId: o.id, platinum: o.platinum, quantity: o.quantity, visible: vis } satisfies WfmUpdateOrderArgs).catch(() => {})
-    ));
-    loadOrders();
-  };
-
   const saveEdit = async () => {
     if (!editing) return;
     await invokeWfm("wfm_update_order", { orderId: editing.id, platinum: editing.pt, quantity: editing.qty, visible: editing.visible } satisfies WfmUpdateOrderArgs).catch(() => {});
@@ -485,11 +481,95 @@ function ListingsPanel({ username: _username, itemIdMap, wfmItems, imageMap, auc
   const allOrders = [...orders.sell, ...orders.buy];
   const rivenOrders = allOrders.filter(o => isRivenOrder(o, itemIdMap));
   const nonRivenOrders = allOrders.filter(o => !isRivenOrder(o, itemIdMap));
+
+  const sellCount = nonRivenOrders.filter(o => o.type === "sell").length;
+  const buyCount  = nonRivenOrders.filter(o => o.type === "buy").length;
+
   const q = search.trim().toLowerCase();
-  const visibleOrders = q ? nonRivenOrders.filter(o => orderName(o, itemIdMap).toLowerCase().includes(q)) : nonRivenOrders;
+  const minP = minPlat.trim() !== "" ? Number(minPlat) : null;
+  const maxP = maxPlat.trim() !== "" ? Number(maxPlat) : null;
+
+  const hasFilter = Boolean(q || typeFilter !== "all" || minPlat !== "" || maxPlat !== "" || sortBy !== "default");
+
+  const clearFilters = () => {
+    setSearch("");
+    setTypeFilter("all");
+    setMinPlat("");
+    setMaxPlat("");
+    setSortBy("default");
+  };
+
+  const visibleOrders = useMemo(() => {
+    let list = nonRivenOrders;
+
+    if (typeFilter !== "all") {
+      list = list.filter(o => o.type === typeFilter);
+    }
+
+    if (q) {
+      list = list.filter(o => orderName(o, itemIdMap).toLowerCase().includes(q));
+    }
+
+    if (minP !== null && !isNaN(minP)) {
+      list = list.filter(o => o.platinum >= minP);
+    }
+
+    if (maxP !== null && !isNaN(maxP)) {
+      list = list.filter(o => o.platinum <= maxP);
+    }
+
+    if (sortBy === "plat-asc") {
+      list = [...list].sort((a, b) => a.platinum - b.platinum || orderName(a, itemIdMap).localeCompare(orderName(b, itemIdMap)));
+    } else if (sortBy === "plat-desc") {
+      list = [...list].sort((a, b) => b.platinum - a.platinum || orderName(a, itemIdMap).localeCompare(orderName(b, itemIdMap)));
+    } else if (sortBy === "name") {
+      list = [...list].sort((a, b) => orderName(a, itemIdMap).localeCompare(orderName(b, itemIdMap)));
+    }
+
+    return list;
+  }, [nonRivenOrders, typeFilter, q, minP, maxP, sortBy, itemIdMap]);
+
+  const visibleRivenOrders = useMemo(() => {
+    let list = rivenOrders;
+
+    if (typeFilter !== "all") {
+      list = list.filter(o => o.type === typeFilter);
+    }
+
+    if (q) {
+      list = list.filter(o => orderName(o, itemIdMap).toLowerCase().includes(q));
+    }
+
+    if (minP !== null && !isNaN(minP)) {
+      list = list.filter(o => o.platinum >= minP);
+    }
+
+    if (maxP !== null && !isNaN(maxP)) {
+      list = list.filter(o => o.platinum <= maxP);
+    }
+
+    if (sortBy === "plat-asc") {
+      list = [...list].sort((a, b) => a.platinum - b.platinum || orderName(a, itemIdMap).localeCompare(orderName(b, itemIdMap)));
+    } else if (sortBy === "plat-desc") {
+      list = [...list].sort((a, b) => b.platinum - a.platinum || orderName(a, itemIdMap).localeCompare(orderName(b, itemIdMap)));
+    } else if (sortBy === "name") {
+      list = [...list].sort((a, b) => orderName(a, itemIdMap).localeCompare(orderName(b, itemIdMap)));
+    }
+
+    return list;
+  }, [rivenOrders, typeFilter, q, minP, maxP, sortBy, itemIdMap]);
+
+  const setAllOrdersVisible = async (vis: boolean) => {
+    const target = hasFilter ? visibleOrders : [...orders.sell, ...orders.buy];
+    await Promise.all(target.map(o =>
+      invokeWfm("wfm_update_order", { orderId: o.id, platinum: o.platinum, quantity: o.quantity, visible: vis } satisfies WfmUpdateOrderArgs).catch(() => {})
+    ));
+    loadOrders();
+  };
 
   const bulkRivenOrdersVisible = async (vis: boolean) => {
-    await Promise.all(rivenOrders.map(o =>
+    const target = hasFilter ? visibleRivenOrders : rivenOrders;
+    await Promise.all(target.map(o =>
       invokeWfm("wfm_update_order", { orderId: o.id, platinum: o.platinum, quantity: o.quantity, visible: vis } satisfies WfmUpdateOrderArgs).catch(() => {})
     ));
     loadOrders();
@@ -498,23 +578,105 @@ function ListingsPanel({ username: _username, itemIdMap, wfmItems, imageMap, auc
   return (
     <div className="wfm-panel">
       <div className="wfm-section-label wfm-section-label-row">
-        <span>Active Listings ({nonRivenOrders.length})</span>
+        <span>Active Listings ({visibleOrders.length}{visibleOrders.length !== nonRivenOrders.length ? ` / ${nonRivenOrders.length}` : ""})</span>
         <button className="wfm-refresh-btn" onClick={loadOrders} title="Refresh">↻</button>
-        {nonRivenOrders.length > 0 && <>
-          <button className="wfm-bulk-btn wfm-bulk-show" onClick={() => setAllOrdersVisible(true)} title="Set all listings visible">Vis All</button>
-          <button className="wfm-bulk-btn wfm-bulk-hide" onClick={() => setAllOrdersVisible(false)} title="Set all listings hidden">Hide All</button>
+        {visibleOrders.length > 0 && <>
+          <button className="wfm-bulk-btn wfm-bulk-show" onClick={() => setAllOrdersVisible(true)} title="Set listings visible">Vis All</button>
+          <button className="wfm-bulk-btn wfm-bulk-hide" onClick={() => setAllOrdersVisible(false)} title="Set listings hidden">Hide All</button>
         </>}
       </div>
       <div className="wfm-listings-hint">To post a new listing, click any set in the Prime Sets tab.</div>
-      <input
-        className="wfm-listings-search"
-        type="text"
-        placeholder="Search listings…"
-        value={search}
-        onChange={e => setSearch(e.target.value)}
-      />
+
+      <div className="wfm-filter-row">
+        <input
+          className="wfm-listings-search"
+          type="text"
+          placeholder="Search listings…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+      </div>
+
+      <div className="wfm-filter-bar">
+        <div className="wfm-filter-group" title="Filter by order type (Selling, Buying, or Both)">
+          <button
+            className={`wfm-filter-chip${typeFilter === "all" ? " active" : ""}`}
+            onClick={() => setTypeFilter("all")}
+          >
+            All ({nonRivenOrders.length})
+          </button>
+          <button
+            className={`wfm-filter-chip chip-sell${typeFilter === "sell" ? " active" : ""}`}
+            onClick={() => setTypeFilter("sell")}
+          >
+            Selling ({sellCount})
+          </button>
+          <button
+            className={`wfm-filter-chip chip-buy${typeFilter === "buy" ? " active" : ""}`}
+            onClick={() => setTypeFilter("buy")}
+          >
+            Buying ({buyCount})
+          </button>
+        </div>
+
+        <div className="wfm-plat-filter" title="Filter listings by platinum value range">
+          <span className="wfm-plat-label">🪙 Plat</span>
+          <input
+            className="wfm-plat-input"
+            type="text"
+            inputMode="numeric"
+            placeholder="Min"
+            value={minPlat}
+            onChange={e => setMinPlat(e.target.value.replace(/[^0-9]/g, ""))}
+          />
+          <span className="wfm-plat-sep">–</span>
+          <input
+            className="wfm-plat-input"
+            type="text"
+            inputMode="numeric"
+            placeholder="Max"
+            value={maxPlat}
+            onChange={e => setMaxPlat(e.target.value.replace(/[^0-9]/g, ""))}
+          />
+        </div>
+
+        <div className="wfm-filter-group" title="Sort listings">
+          <button
+            className={`wfm-filter-chip chip-sort${sortBy === "plat-asc" ? " active" : ""}`}
+            onClick={() => setSortBy(s => s === "plat-asc" ? "default" : "plat-asc")}
+            title="Sort listings with lowest platinum price first"
+          >
+            🪙 Lowest Plat
+          </button>
+          <button
+            className={`wfm-filter-chip chip-sort${sortBy === "plat-desc" ? " active" : ""}`}
+            onClick={() => setSortBy(s => s === "plat-desc" ? "default" : "plat-desc")}
+            title="Sort listings with highest platinum price first"
+          >
+            Highest Plat
+          </button>
+          <button
+            className={`wfm-filter-chip chip-sort${sortBy === "name" ? " active" : ""}`}
+            onClick={() => setSortBy(s => s === "name" ? "default" : "name")}
+            title="Sort listings alphabetically"
+          >
+            A–Z
+          </button>
+        </div>
+
+        {hasFilter && (
+          <button
+            className="wfm-filter-clear"
+            onClick={clearFilters}
+            title="Reset search and filters"
+          >
+            ✕ Reset
+          </button>
+        )}
+      </div>
+
       {loading ? <div className="wfm-empty">Loading…</div> :
-       visibleOrders.length === 0 ? <div className="wfm-empty">{q ? "No listings match." : "No active listings."}</div> :
+       visibleOrders.length === 0 ? <div className="wfm-empty">{hasFilter ? "No listings match current filters." : "No active listings."}</div> :
        <div className="wfm-orders">
          {visibleOrders.map(o => (
            <div key={o.id} className={`wfm-order-row${o.visible ? "" : " wfm-order-hidden"}`}>
@@ -551,7 +713,7 @@ function ListingsPanel({ username: _username, itemIdMap, wfmItems, imageMap, auc
         />
       )}
       <RivensSection
-        rivenOrders={rivenOrders}
+        rivenOrders={visibleRivenOrders}
         itemIdMap={itemIdMap}
         auctionRefreshKey={auctionRefreshKey}
         onEditOrder={startEdit}
