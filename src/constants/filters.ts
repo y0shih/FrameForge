@@ -22,8 +22,9 @@ export const FOUNDRY_FILTERS_DEFAULT: FoundryFilters = {
 };
 
 export const MARKET_FILTERS_DEFAULT: MarketFilters = {
+  category: "all",
   search: "", ownership: [], conditions: [], vault: [], sortMode: "ducats",
-  activeMarketTab: "trading",
+  activeMarketTab: "sets",
 };
 
 export const RELIC_FILTERS_DEFAULT: RelicFilters = {

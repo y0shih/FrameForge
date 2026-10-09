@@ -73,6 +73,7 @@ function parseMarketFilters(value: unknown): MarketPresetFilters | null {
     !isStringArray(value.vault, ["vaulted", "unvaulted"]) ||
     !["plat", "ducats", "az", "za"].includes(value.sortMode as string)) return null;
   return {
+    category: typeof value.category === "string" ? value.category : "all",
     search: value.search,
     ownership: value.ownership as MarketPresetFilters["ownership"],
     conditions: value.conditions as MarketPresetFilters["conditions"],

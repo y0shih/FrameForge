@@ -8,11 +8,14 @@ import WfmTrading from "./WfmTrading";
 import ItemMarketPopup from "./ItemMarketPopup";
 import { matchesSearchTerms, splitSearchTerms } from "../lib/search";
 import { TAURI_COMMANDS, TAURI_EVENTS } from "../constants/tauri";
+import { PREFERENCE_KEYS } from "../constants/preferences";
+import { ViewToggle } from "../shared/ViewToggle";
 import { useCatalog } from "../hooks/useCatalog";
 import { useMarketData } from "../hooks/useMarketData";
 import type { CatalogItem, CraftingJob, InventoryItem, RecipeComponent, RecipeMap } from "../types/items";
 import type { MarketFilters } from "../types/filters";
 import type { FilterPresetModule, FilterPresetSettings } from "../types/filterPresets";
+import type { ViewMode } from "../types/ui";
 import type { ModCopy } from "../types/inventory";
 import type { BlobRivenEntry, BlobRivenStat, WfmItemInfo, WfmPrice, WfmPriceUpdate, WfmRivenAttribute } from "../types/market";
 import type { WfmCreateOrderArgs, WfmCreateRivenAuctionArgs, WfmSession } from "../types/tauri";
@@ -79,15 +82,18 @@ function flattenRecipeCounts(comps: RecipeComponent[], multiplier: number, out: 
   }
 }
 
+const PRIME_SET_CATEGORIES = ["all", "Warframes", "Primary", "Secondary", "Melee", "Companions", "Archwing"] as const;
+
 // ─── Set card ─────────────────────────────────────────────────────────────────
 
 interface SetPart { item: CatalogItem; qty: number; required_count: number; sellMedian?: number; loading: boolean; urlName: string; }
 
-function SetCard({ setKey, parts, parentItem, setPrice, setPriceLoading, pricesFetched, crafting, onCardClick, onPartClick }: {
+function SetCard({ setKey, parts, parentItem, setPrice, setPriceLoading, pricesFetched, crafting, onCardClick, onPartClick, view }: {
   setKey: string; parts: SetPart[]; parentItem?: CatalogItem;
   setPrice?: WfmPrice; setPriceLoading: boolean; pricesFetched: boolean;
   crafting: CraftingJob[]; onCardClick?: () => void;
   onPartClick?: (urlName: string, displayName: string, imageName?: string) => void;
+  view: ViewMode;
 }) {
   const totalDucats  = parts.reduce((s, p) => s + (p.item.ducats ?? 0) * p.qty, 0);
   const ownedCount   = parts.filter(p => p.qty > 0).length;
@@ -97,6 +103,151 @@ function SetCard({ setKey, parts, parentItem, setPrice, setPriceLoading, pricesF
     c.unique_name === parentItem?.unique_name ||
     parts.some(p => p.item.unique_name === c.unique_name)
   );
+
+  if (view === "icons") {
+    return (
+      <div
+        className={`market-icon-card${isComplete ? " market-card-complete" : ""}`}
+        onClick={onCardClick}
+        title={`${setKey} (${ownedCount}/${parts.length} parts)${setPrice?.sell_median ? ` · ${fmtPt(setPrice.sell_median)} plat` : ""}`}
+      >
+        <div style={{ position: "relative" }}>
+          <ItemImg imageName={parentItem?.image_name} size={64} fallbackText="P" />
+          {isCrafting && (
+            <span style={{ position: "absolute", top: -4, right: -6, fontSize: 13 }} title="Building in Foundry">⚒</span>
+          )}
+        </div>
+        <div className="market-icon-name">{setKey}</div>
+        <div className="market-set-badges">
+          {isComplete && <span className="mset-badge mset-complete">✓ Complete</span>}
+          {!isComplete && <span className="mset-badge mset-parts">{ownedCount}/{parts.length}</span>}
+          {hasDupes && <span className="mset-badge mset-dupes">+ Dupes</span>}
+        </div>
+        <div className="market-icon-price">
+          <PlatIcon size={12} />
+          <span>{setPrice?.sell_median ? fmtPt(setPrice.sell_median) : "—"}</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (view === "list" || view === "list-compact") {
+    const isCompact = view === "list-compact";
+    return (
+      <div
+        className={`market-list-row${isComplete ? " market-card-complete" : ""}`}
+        onClick={onCardClick}
+        title="View set orders & prices"
+      >
+        {!isCompact && (
+          <div className="market-list-img">
+            <ItemImg imageName={parentItem?.image_name} size={28} fallbackText="P" />
+          </div>
+        )}
+        <div className="market-list-name">
+          {setKey}
+          {isCrafting && <span title="Building in Foundry" style={{ marginLeft: 4, fontSize: 11 }}>⚒</span>}
+        </div>
+        {parentItem?.category && (
+          <span className="market-list-cat">{parentItem.category}</span>
+        )}
+        <div className="market-list-badges">
+          {isComplete && <span className="mset-badge mset-complete">✓ Complete</span>}
+          {!isComplete && <span className="mset-badge mset-parts">{ownedCount}/{parts.length}</span>}
+          {hasDupes && <span className="mset-badge mset-dupes">+ Dupes</span>}
+        </div>
+        <div className="market-list-parts">
+          {parts.map(p => {
+            const qty = p.qty;
+            const qtyCls = qty === 0 ? "mqty-zero" : qty === 1 ? "mqty-one" : "mqty-dupe";
+            return (
+              <span
+                key={p.item.unique_name}
+                className="market-list-part-pill"
+                onClick={e => {
+                  if (onPartClick) {
+                    e.stopPropagation();
+                    onPartClick(p.urlName, p.item.name, p.item.image_name ?? undefined);
+                  }
+                }}
+                title={`Click for ${p.item.name} orders`}
+              >
+                <span>{partLabel(p.item.name, setKey)}</span>
+                <span className={`mpart-qty ${qtyCls}`} style={{ padding: "0 3px", fontSize: 10, minWidth: 14 }}>{qty}</span>
+              </span>
+            );
+          })}
+        </div>
+        {totalDucats > 0 && (
+          <div className="market-list-ducats" title="Owned ducats">
+            <DucatIcon size={12} />
+            <span>{fmt(totalDucats)}</span>
+          </div>
+        )}
+        <div className="market-list-plat" title="Set sell median">
+          <PlatIcon size={12} />
+          <span>{setPrice?.sell_median ? `${fmtPt(setPrice.sell_median)}p` : "—"}</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (view === "text-cards") {
+    return (
+      <div
+        className={`market-text-card${isComplete ? " market-card-complete" : ""}`}
+        onClick={onCardClick}
+      >
+        <div className="market-tc-header">
+          <span className="market-tc-name">
+            {setKey}
+            {isCrafting && <span style={{ marginLeft: 4 }}>⚒</span>}
+          </span>
+          <div className="market-tc-prices">
+            {totalDucats > 0 && (
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 2, color: "#f0c040", fontWeight: 600 }}>
+                <DucatIcon size={11} /> {fmt(totalDucats)}
+              </span>
+            )}
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 2, color: "#b39ddb", fontWeight: 700 }}>
+              <PlatIcon size={11} /> {setPrice?.sell_median ? `${fmtPt(setPrice.sell_median)}p` : "—"}
+            </span>
+          </div>
+        </div>
+        <div className="market-set-badges" style={{ flexDirection: "row", justifyContent: "flex-start" }}>
+          {isComplete && <span className="mset-badge mset-complete">✓ Complete</span>}
+          {!isComplete && <span className="mset-badge mset-parts">{ownedCount}/{parts.length}</span>}
+          {hasDupes && <span className="mset-badge mset-dupes">+ Dupes</span>}
+          {parentItem?.category && <span className="market-list-cat">{parentItem.category}</span>}
+        </div>
+        <div className="market-tc-parts">
+          {parts.map(p => {
+            const qty = p.qty;
+            const qtyCls = qty === 0 ? "mqty-zero" : qty === 1 ? "mqty-one" : "mqty-dupe";
+            return (
+              <div
+                key={p.item.unique_name}
+                className="market-tc-part-row"
+                onClick={e => {
+                  if (onPartClick) {
+                    e.stopPropagation();
+                    onPartClick(p.urlName, p.item.name, p.item.image_name ?? undefined);
+                  }
+                }}
+              >
+                <span>{partLabel(p.item.name, setKey)}</span>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <span style={{ color: "#f0c040", fontSize: 9 }}>{p.item.ducats ?? "—"}d</span>
+                  <span style={{ color: "#b39ddb", fontSize: 9 }}>{p.sellMedian ? `${fmtPt(p.sellMedian)}p` : "—"}</span>
+                  <span className={`mpart-qty ${qtyCls}`} style={{ fontSize: 9, minWidth: 14, padding: "0 2px" }}>{qty}</span>
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`market-card${isComplete ? " market-card-complete" : ""}`}>
@@ -175,7 +326,10 @@ export default function MarketHelper({ inventory, refreshKey, crafting, onWfmLog
   const [popup, setPopup] = useState<{ urlName: string; displayName: string; imageName?: string; prefillModRank?: number } | null>(null);
   const [recipeCountMap, setRecipeCountMap]       = useState<Map<string, number>>(new Map());
   const [rivens, setRivens]               = useState<BlobRivenEntry[]>([]);
-  const { search, ownership, conditions, vault, sortMode, activeMarketTab } = filters;
+  const [marketView, setMarketView]       = useState<ViewMode>(() =>
+    (localStorage.getItem(PREFERENCE_KEYS.MARKET_VIEW) as ViewMode | null) ?? "cards"
+  );
+  const { search, ownership, conditions, vault, sortMode, activeMarketTab, category = "all" } = filters;
   const set = <K extends keyof MarketFilters>(k: K, v: MarketFilters[K]) => onFiltersChange({ ...filters, [k]: v });
 
   // Seed live prices map from shared cached prices on first load
@@ -416,8 +570,13 @@ export default function MarketHelper({ inventory, refreshKey, crafting, onWfmLog
     return Array.from(sets.entries())
       .filter(([key]) => matchesSearchTerms(searchTerms, key))
       .filter(([key, parts]) => {
-        const ownedAny    = parts.some(p => (inventory[p.unique_name]?.quantity ?? 0) > 0);
         const parent      = parentItems.get(key);
+        if (category && category !== "all") {
+          const itemCat = parent?.category ?? parts[0]?.category;
+          if (itemCat !== category) return false;
+        }
+
+        const ownedAny    = parts.some(p => (inventory[p.unique_name]?.quantity ?? 0) > 0);
         // "Item owned" = the fully built item appears in inventory under its display name.
         // inventory[key] uses the name-based index (e.g. "Ash Prime" → InventoryItem).
         const isItemOwned = (inventory[key]?.quantity ?? 0) > 0;
@@ -468,7 +627,7 @@ export default function MarketHelper({ inventory, refreshKey, crafting, onWfmLog
         if (sortMode === "za") return bKey.localeCompare(aKey);
         return aKey.localeCompare(bKey); // az
       });
-  }, [sets, inventory, ownership, conditions, vault, sortMode, search, parentItems, prices, wfmLookup, recipeCountMap]);
+  }, [sets, inventory, ownership, conditions, vault, sortMode, search, category, parentItems, prices, wfmLookup, recipeCountMap]);
 
   return (
     <div className="market-helper">
@@ -531,9 +690,19 @@ export default function MarketHelper({ inventory, refreshKey, crafting, onWfmLog
 
       {activeMarketTab === "sets" && <>
       <div className="market-header">
-        <input className="foundry-search" style={{ width: 200 }} placeholder="Search sets (comma-separated)…"
+        <input className="foundry-search" style={{ width: 180 }} placeholder="Search sets (comma-separated)…"
           value={search} onChange={e => set("search", e.target.value)} />
         <div className="filter-bar" style={{ border: "none", padding: 0, flex: 1, flexWrap: "wrap" }}>
+          {PRIME_SET_CATEGORIES.map(cat => (
+            <button
+              key={cat}
+              className={`fchip ${(category || "all") === cat ? "fchip-on" : ""}`}
+              onClick={() => set("category", cat)}
+            >
+              {cat === "all" ? "All" : cat}
+            </button>
+          ))}
+          <span className="fbar-sep"/>
           <button className={`fchip ${ownership.includes("owned")    ? "fchip-on" : ""}`} onClick={() => set("ownership", toggle(ownership, "owned"))}>Owned</button>
           <button className={`fchip ${ownership.includes("notowned") ? "fchip-on" : ""}`} onClick={() => set("ownership", toggle(ownership, "notowned"))}>Not Owned</button>
           <span className="fbar-sep"/>
@@ -554,10 +723,14 @@ export default function MarketHelper({ inventory, refreshKey, crafting, onWfmLog
           <button className={`fchip ${sortMode === "za"     ? "fchip-on" : ""}`} onClick={() => set("sortMode", "za")}>Z–A</button>
           <span className="fbar-sep"/>
           <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--muted)" }}>{visibleSets.length} sets</span>
+          <ViewToggle view={marketView} onChange={v => { setMarketView(v); localStorage.setItem(PREFERENCE_KEYS.MARKET_VIEW, v); }} />
           <HelpTip items={[
-            { swatch: "rgba(240,192,64,.5)", icon: "✓", label: "Complete set", desc: "Gold border + ✓ — all parts in inventory" },
-            { icon: "+",  label: "+ Dupes",    desc: "Extra copies of at least one part" },
-            { icon: "⚒",  label: "⚒ Building", desc: "Item is currently crafting in Foundry" },
+            { swatch: "rgba(63,185,80,.5)", icon: "✓", label: "Complete set", desc: "Green border + ✓ — all parts in inventory" },
+            { swatch: "rgba(240,192,64,.5)", icon: "+", label: "+ Dupes", desc: "Gold/yellow — extra parts owned beyond craft count" },
+            { swatch: "rgba(248,81,73,.5)", icon: "0", label: "Missing part", desc: "Red box / dimmed row — 0 owned" },
+            { icon: "⚒", label: "⚒ Building", desc: "Item currently crafting in Foundry" },
+            { swatch: "#b39ddb", label: "Platinum", desc: "WFM median sell price in platinum" },
+            { swatch: "#f0c040", label: "Ducats", desc: "Void Trader (Baro) ducat value" },
           ]} />
         </div>
       </div>
@@ -572,7 +745,7 @@ export default function MarketHelper({ inventory, refreshKey, crafting, onWfmLog
         {wfmItems.length > 0 && <span style={{ color: "var(--green)", fontSize: 11 }}>· {wfmItems.length.toLocaleString()} items from warframe.market</span>}
       </div>
 
-      <div className="market-grid">
+      <div className={`market-grid market-grid-${marketView}`}>
         {visibleSets.length === 0 ? (
           <div className="empty-msg" style={{ gridColumn: "1/-1" }}>No sets match. Adjust filters or own some prime parts first.</div>
         ) : visibleSets.map(([setKey, parts]) => {
@@ -600,6 +773,7 @@ export default function MarketHelper({ inventory, refreshKey, crafting, onWfmLog
               setPriceLoading={false}
               pricesFetched={prices.size > 0}
               crafting={crafting}
+              view={marketView}
               onCardClick={() => {
                 invoke("wfm_queue_price_priority", { urlName: setUrl }).catch(() => {});
                 setPopup({ urlName: setUrl, displayName: setKey + " Set", imageName: parent?.image_name ?? undefined });

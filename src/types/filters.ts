@@ -22,6 +22,7 @@ export interface FoundryFilters {
 }
 
 export interface MarketFilters {
+  category: string;
   search: string;
   ownership: ("owned" | "notowned")[];
   conditions: ("dupes" | "itemowned" | "fullset" | "hasparts")[];
