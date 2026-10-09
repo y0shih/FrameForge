@@ -19,6 +19,7 @@ CLAUDE.md
 # Release tooling and personal scripts — internal, not for contributors
 build-and-release.bat
 backup-memory.bat
+start-market-dev.bat
 pnpm-workspace.yaml
 
 # Stray backup copies of source files — git history already covers this
@@ -39,3 +40,6 @@ src-tauri/target/
 
 # Dev build data root (pnpm tauri dev) - separate from the installed app's files
 .frameforge-dev/
+
+# Git worktrees
+.worktrees/
