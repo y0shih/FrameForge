@@ -132,3 +132,13 @@ export interface WfmTopItem {
   daily_volume: number;
   total_value_7d: number;
 }
+
+export interface RivenSellQueueItem {
+  id: string;
+  riven: BlobRivenEntry;
+  weaponName: string;
+  modName: string;
+  price: number;
+  mode: "direct" | "auction";
+  wfmAuctionId?: string;
+}

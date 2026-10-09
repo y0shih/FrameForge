@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { getVersion } from "@tauri-apps/api/app";
 import { listen } from "@tauri-apps/api/event";
@@ -31,6 +31,7 @@ import Statistics from "./statistics/Statistics";
 import Overlay from "./relic-overlay/Overlay";
 import ModularWindow from "./modular-window/ModularWindow";
 import ModularWindowPage from "./modular-window/ModularWindowPage";
+import RivenSellSidebar from "./riven/RivenSellSidebar";
 import SettingsModal from "./SettingsModal";
 import ChangeLog from "./ChangeLog";
 import InventoryGrid from "./inventory/InventoryGrid";
@@ -43,6 +44,7 @@ import HeaderActions from "./header/HeaderActions";
 import ErrorBoundary from "./shared/ErrorBoundary";
 import HeaderStatusBadges from "./header/HeaderStatusBadges";
 import ConnectionStatusChip from "./header/ConnectionStatusChip";
+import type { RivenSellQueueItem } from "./types/market";
 import KeepMountedWhenHidden from "./KeepMountedWhenHidden";
 import { FOUNDRY_FILTERS_DEFAULT, INVENTORY_FILTERS_DEFAULT, MARKET_FILTERS_DEFAULT, RELIC_FILTERS_DEFAULT } from "./constants/filters";
 import { PREFERENCE_KEYS } from "./constants/preferences";
@@ -222,6 +224,57 @@ export default function App() {
     setInventoryView(view);
     localStorage.setItem(PREFERENCE_KEYS.INVENTORY_VIEW, view);
   }, []);
+
+  // ── Riven Sell Sidebar state ──
+  const [sellSidebarOpen, setSellSidebarOpen] = useState(() => {
+    return localStorage.getItem("ff_riven_sell_open") === "true";
+  });
+  const [sellSidebarWidth, setSellSidebarWidth] = useState(() => {
+    const saved = localStorage.getItem("ff_riven_sell_width");
+    return saved ? parseInt(saved, 10) : 280;
+  });
+  const [sellQueue, setSellQueue] = useState<RivenSellQueueItem[]>(() => {
+    try {
+      const saved = localStorage.getItem("ff_riven_sell_queue");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem("ff_riven_sell_open", String(sellSidebarOpen));
+  }, [sellSidebarOpen]);
+
+  useEffect(() => {
+    localStorage.setItem("ff_riven_sell_width", String(sellSidebarWidth));
+  }, [sellSidebarWidth]);
+
+  useEffect(() => {
+    localStorage.setItem("ff_riven_sell_queue", JSON.stringify(sellQueue));
+  }, [sellQueue]);
+
+  const handleAddToSellQueue = useCallback((newItems: RivenSellQueueItem[]) => {
+    setSellQueue(prev => {
+      const map = new Map(prev.map(it => [it.id, it]));
+      for (const it of newItems) map.set(it.id, it);
+      return Array.from(map.values());
+    });
+    setSellSidebarOpen(true);
+  }, []);
+
+  const handleUpdateSellItem = useCallback((id: string, patch: Partial<RivenSellQueueItem>) => {
+    setSellQueue(prev => prev.map(it => it.id === id ? { ...it, ...patch } : it));
+  }, []);
+
+  const handleRemoveSellItem = useCallback((id: string) => {
+    setSellQueue(prev => prev.filter(it => it.id !== id));
+  }, []);
+
+  const handleClearSellQueue = useCallback(() => {
+    setSellQueue([]);
+  }, []);
+
   const [showSettings, setShowSettings] = useState(false);
   const [settingsTab, setSettingsTab] = useState<'general' | 'overlays' | 'market' | 'filters' | 'accessibility' | 'data' | 'debugging'>('general');
   const [settingsFilterModule, setSettingsFilterModule] = useState<FilterPresetModule>("inventory");
@@ -820,7 +873,7 @@ export default function App() {
         {/* Keep mounted at all times so WfmTrading's trade-completed listener
             (auto listing update) fires regardless of which tab is active. */}
         <KeepMountedWhenHidden active={activeModule === "market"}>
-          <MarketHelper inventory={inventory} refreshKey={itemsRefreshKey} crafting={crafting} filters={marketFilters} onFiltersChange={setMarketFilters} filterPresets={filterPresets} onFilterPresetsChange={setFilterPresets} onOpenSettings={openFilterSettings} onWfmLoginChange={handleWfmLoginChange} modCopiesMap={modCopiesMap} wfmRecordSales={wfmRecordSales} />
+          <MarketHelper inventory={inventory} refreshKey={itemsRefreshKey} crafting={crafting} filters={marketFilters} onFiltersChange={setMarketFilters} filterPresets={filterPresets} onFilterPresetsChange={setFilterPresets} onOpenSettings={openFilterSettings} onWfmLoginChange={handleWfmLoginChange} modCopiesMap={modCopiesMap} wfmRecordSales={wfmRecordSales} onAddToSellSidebar={handleAddToSellQueue} />
         </KeepMountedWhenHidden>
 
         {/* ── Relics module ── */}
@@ -894,6 +947,8 @@ export default function App() {
           onItemClick={openChangeLogItem}
           onChangeLogClick={openRecentChanges}
           onCategoryClick={openRecentCategory}
+          rivenSellOpen={sellSidebarOpen}
+          onToggleRivenSell={() => setSellSidebarOpen(o => !o)}
         />
         </div>
 
@@ -917,6 +972,20 @@ export default function App() {
           sectionOrder={modularSectionOrder}
           onSectionOrderChange={setModularSectionOrder}
         />}
+
+        {/* ── Riven Sell Sidebar — docked on the right of Modular Window ── */}
+        {sellSidebarOpen && (
+          <RivenSellSidebar
+            open={sellSidebarOpen}
+            onClose={() => setSellSidebarOpen(false)}
+            width={sellSidebarWidth}
+            onWidthChange={setSellSidebarWidth}
+            items={sellQueue}
+            onUpdateItem={handleUpdateSellItem}
+            onRemoveItem={handleRemoveSellItem}
+            onClear={handleClearSellQueue}
+          />
+        )}
 
       </div>
     </div>

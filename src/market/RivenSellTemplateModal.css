@@ -1,0 +1,355 @@
+.rstm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 250;
+  backdrop-filter: blur(2px);
+}
+
+.rstm-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  width: 820px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 60px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5);
+}
+
+.rstm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.rstm-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rstm-close-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: all 0.15s;
+}
+
+.rstm-close-btn:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.rstm-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Left Column: Preview ── */
+.rstm-preview-col {
+  width: 320px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: rgba(0, 0, 0, 0.15);
+  overflow-y: auto;
+}
+
+.rstm-preview-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.rstm-card-preview {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rstm-card-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.rstm-card-weapon {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.rstm-card-mod {
+  font-size: 13px;
+  font-style: italic;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.rstm-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  font-size: 11px;
+  color: var(--muted);
+  padding: 6px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.rstm-card-meta span {
+  white-space: nowrap;
+}
+
+.rstm-card-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.rstm-stat-tag {
+  font-size: 11px;
+  border-radius: 4px;
+  padding: 2px 7px;
+  display: inline-block;
+}
+
+.rstm-stat-buff {
+  background: rgba(46, 160, 67, 0.18);
+  color: #3fb950;
+  border: 1px solid rgba(46, 160, 67, 0.3);
+}
+
+.rstm-stat-curse {
+  background: rgba(248, 81, 73, 0.14);
+  color: #f85149;
+  border: 1px solid rgba(248, 81, 73, 0.25);
+}
+
+/* ── Right Column: Pricing list ── */
+.rstm-pricing-col {
+  flex: 1;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow-y: auto;
+  min-width: 0;
+}
+
+.rstm-list-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.rstm-row {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.rstm-row:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(56, 139, 253, 0.4);
+}
+
+.rstm-row.rstm-active-row {
+  border-color: var(--accent);
+  background: rgba(56, 139, 253, 0.08);
+}
+
+.rstm-row-name-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.rstm-row-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rstm-row-sub {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* Mode toggle */
+.rstm-mode-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.rstm-mode-btn {
+  background: none;
+  border: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: all 0.1s;
+}
+
+.rstm-mode-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* WFM Price Fill Button */
+.rstm-wfm-btn {
+  background: rgba(56, 139, 253, 0.12);
+  border: 1px solid rgba(56, 139, 253, 0.35);
+  color: var(--accent);
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.rstm-wfm-btn:hover {
+  background: rgba(56, 139, 253, 0.25);
+}
+
+/* Price input */
+.rstm-price-wrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 90px;
+}
+
+.rstm-price-input {
+  width: 60px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 3px 6px;
+  text-align: right;
+  outline: none;
+}
+
+.rstm-price-input:focus {
+  border-color: var(--accent);
+}
+
+.rstm-price-unit {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.rstm-row-del-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  transition: all 0.12s;
+}
+
+.rstm-row-del-btn:hover {
+  color: var(--red);
+  background: rgba(248, 81, 73, 0.12);
+}
+
+/* Footer */
+.rstm-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.rstm-footer-info {
+  margin-right: auto;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.rstm-btn-cancel {
+  padding: 6px 14px;
+  border-radius: 5px;
+  font-size: 12px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  transition: all 0.15s;
+}
+
+.rstm-btn-cancel:hover {
+  border-color: var(--muted);
+}
+
+.rstm-btn-submit {
+  padding: 6px 16px;
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+  transition: all 0.15s;
+}
+
+.rstm-btn-submit:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.rstm-btn-submit:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
