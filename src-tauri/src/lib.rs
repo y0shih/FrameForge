@@ -278,11 +278,12 @@ fn setup_app(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         ).map_err(|e| e.to_string())?;
         window.set_icon(icon).map_err(|e| e.to_string())?;
         if cfg!(debug_assertions) {
-            let _ = window.set_title("FrameForge Dev");
+            let _ = window.set_title("FrameForge Dev (Port 1430 - Market)");
         }
         let state = app.state::<AppState>();
         restore_window_state(app.handle(), &window, &state.settings_path, "window", 400, 300);
         let _ = window.show();
+        let _ = window.set_focus();
     }
 
     // Overlay: show once for WebView2 init, then park off-screen.
