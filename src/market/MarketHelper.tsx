@@ -329,7 +329,7 @@ export default function MarketHelper({ inventory, refreshKey, crafting, onWfmLog
   const [marketView, setMarketView]       = useState<ViewMode>(() =>
     (localStorage.getItem(PREFERENCE_KEYS.MARKET_VIEW) as ViewMode | null) ?? "cards"
   );
-  const { search, ownership, conditions, vault, sortMode, activeMarketTab, category = "all" } = filters;
+  const { search, ownership, conditions, vault, sortMode, activeMarketTab, category = "all", minPlat, maxPlat } = filters;
   const set = <K extends keyof MarketFilters>(k: K, v: MarketFilters[K]) => onFiltersChange({ ...filters, [k]: v });
 
   // Seed live prices map from shared cached prices on first load
@@ -609,6 +609,18 @@ export default function MarketHelper({ inventory, refreshKey, crafting, onWfmLog
           if (vault.includes("unvaulted") &&  isVaulted) return false;
         }
 
+        // Group 4: Plat value filter
+        if (minPlat != null || maxPlat != null) {
+          const setUrl = wfmLookup.get(normalizeForWfm(key + " Set")) ?? normalizeForWfm(key + " Set");
+          const p = prices.get(setUrl)?.sell_median ?? null;
+          if (minPlat != null && !isNaN(minPlat)) {
+            if (p === null || p < minPlat) return false;
+          }
+          if (maxPlat != null && !isNaN(maxPlat)) {
+            if (p === null || p > maxPlat) return false;
+          }
+        }
+
         return true;
       })
       .sort(([aKey, aParts], [bKey, bParts]) => {
@@ -624,10 +636,18 @@ export default function MarketHelper({ inventory, refreshKey, crafting, onWfmLog
           };
           return getSetPrice(bKey) - getSetPrice(aKey) || aKey.localeCompare(bKey);
         }
+        if (sortMode === "plat-asc") {
+          const getSetPrice = (key: string) => {
+            const url = wfmLookup.get(normalizeForWfm(key + " Set")) ?? normalizeForWfm(key + " Set");
+            const p = prices.get(url)?.sell_median;
+            return p != null ? p : Infinity;
+          };
+          return getSetPrice(aKey) - getSetPrice(bKey) || aKey.localeCompare(bKey);
+        }
         if (sortMode === "za") return bKey.localeCompare(aKey);
         return aKey.localeCompare(bKey); // az
       });
-  }, [sets, inventory, ownership, conditions, vault, sortMode, search, category, parentItems, prices, wfmLookup, recipeCountMap]);
+  }, [sets, inventory, ownership, conditions, vault, sortMode, search, category, minPlat, maxPlat, parentItems, prices, wfmLookup, recipeCountMap]);
 
   return (
     <div className="market-helper">
@@ -717,10 +737,48 @@ export default function MarketHelper({ inventory, refreshKey, crafting, onWfmLog
           <FilterPresets module="market" {...{ filters, onFiltersChange, filterPresets, onFilterPresetsChange, onOpenSettings }} />
           <span className="fbar-sep"/>
           <span className="fbar-label">Sort:</span>
-          <button className={`fchip ${sortMode === "plat"   ? "fchip-on" : ""}`} onClick={() => set("sortMode", "plat")}>Most Plat</button>
-          <button className={`fchip ${sortMode === "ducats" ? "fchip-on" : ""}`} onClick={() => set("sortMode", "ducats")}>Most Ducats</button>
-          <button className={`fchip ${sortMode === "az"     ? "fchip-on" : ""}`} onClick={() => set("sortMode", "az")}>A–Z</button>
-          <button className={`fchip ${sortMode === "za"     ? "fchip-on" : ""}`} onClick={() => set("sortMode", "za")}>Z–A</button>
+          <button className={`fchip ${sortMode === "plat"     ? "fchip-on" : ""}`} onClick={() => set("sortMode", "plat")}>Most Plat</button>
+          <button className={`fchip ${sortMode === "plat-asc" ? "fchip-on" : ""}`} onClick={() => set("sortMode", "plat-asc")}>Lowest Plat</button>
+          <button className={`fchip ${sortMode === "ducats"   ? "fchip-on" : ""}`} onClick={() => set("sortMode", "ducats")}>Most Ducats</button>
+          <button className={`fchip ${sortMode === "az"       ? "fchip-on" : ""}`} onClick={() => set("sortMode", "az")}>A–Z</button>
+          <button className={`fchip ${sortMode === "za"       ? "fchip-on" : ""}`} onClick={() => set("sortMode", "za")}>Z–A</button>
+          <span className="fbar-sep"/>
+          <div className="wfm-plat-filter" title="Filter sets by platinum value range">
+            <span className="wfm-plat-label">🪙 Plat</span>
+            <input
+              className="wfm-plat-input"
+              type="text"
+              inputMode="numeric"
+              placeholder="Min"
+              value={minPlat != null ? String(minPlat) : ""}
+              onChange={e => {
+                const val = e.target.value.replace(/[^0-9]/g, "");
+                set("minPlat", val ? Number(val) : null);
+              }}
+            />
+            <span className="wfm-plat-sep">–</span>
+            <input
+              className="wfm-plat-input"
+              type="text"
+              inputMode="numeric"
+              placeholder="Max"
+              value={maxPlat != null ? String(maxPlat) : ""}
+              onChange={e => {
+                const val = e.target.value.replace(/[^0-9]/g, "");
+                set("maxPlat", val ? Number(val) : null);
+              }}
+            />
+          </div>
+          {(minPlat != null || maxPlat != null) && (
+            <button
+              className="wfm-filter-clear"
+              style={{ padding: "1px 6px", fontSize: 10 }}
+              onClick={() => { set("minPlat", null); set("maxPlat", null); }}
+              title="Clear plat range filter"
+            >
+              ✕
+            </button>
+          )}
           <span className="fbar-sep"/>
           <span style={{ marginLeft: "auto", fontSize: 11, color: "var(--muted)" }}>{visibleSets.length} sets</span>
           <ViewToggle view={marketView} onChange={v => { setMarketView(v); localStorage.setItem(PREFERENCE_KEYS.MARKET_VIEW, v); }} />
@@ -817,12 +875,17 @@ function ModsTab({ catalog: allCatalog, inventory, wfmLookup, prices, modCopiesM
   const [search, setSearch]       = useState("");
   const [catFilter, setCatFilter] = useState<"all" | "mods" | "arcanes">("all");
   const [ownFilter, setOwnFilter] = useState<"all" | "owned" | "notowned">("all");
-  const [sortMode, setSortMode]   = useState<"qty" | "plat" | "az" | "za">("qty");
+  const [sortMode, setSortMode]   = useState<"qty" | "plat" | "plat-asc" | "az" | "za">("qty");
+  const [minPlat, setMinPlat]     = useState<string>("");
+  const [maxPlat, setMaxPlat]     = useState<string>("");
   const [page, setPage]           = useState(0);
 
   const catalog = useMemo(() =>
     allCatalog.filter(i => i.category === "Mods" || i.category === "Arcanes"),
   [allCatalog]);
+
+  const minP = minPlat.trim() !== "" ? Number(minPlat) : null;
+  const maxP = maxPlat.trim() !== "" ? Number(maxPlat) : null;
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -834,6 +897,18 @@ function ModsTab({ catalog: allCatalog, inventory, wfmLookup, prices, modCopiesM
         if (ownFilter === "notowned" && qty  >  0) return false;
         if (catFilter === "mods"    && i.category !== "Mods")    return false;
         if (catFilter === "arcanes" && i.category !== "Arcanes") return false;
+
+        if (minP !== null || maxP !== null) {
+          const u = wfmLookup.get(normalizeForWfm(i.name));
+          const p = u ? (prices.get(u)?.sell_median ?? null) : null;
+          if (minP !== null && !isNaN(minP)) {
+            if (p === null || p < minP) return false;
+          }
+          if (maxP !== null && !isNaN(maxP)) {
+            if (p === null || p > maxP) return false;
+          }
+        }
+
         return true;
       })
       .sort((a, b) => {
@@ -849,12 +924,19 @@ function ModsTab({ catalog: allCatalog, inventory, wfmLookup, prices, modCopiesM
           const bp = bu ? (prices.get(bu)?.sell_median ?? 0) : 0;
           return bp - ap || a.name.localeCompare(b.name);
         }
+        if (sortMode === "plat-asc") {
+          const au = wfmLookup.get(normalizeForWfm(a.name));
+          const bu = wfmLookup.get(normalizeForWfm(b.name));
+          const ap = au && prices.get(au)?.sell_median != null ? prices.get(au)!.sell_median! : Infinity;
+          const bp = bu && prices.get(bu)?.sell_median != null ? prices.get(bu)!.sell_median! : Infinity;
+          return ap - bp || a.name.localeCompare(b.name);
+        }
         if (sortMode === "za") return b.name.localeCompare(a.name);
         return a.name.localeCompare(b.name);
       });
-  }, [catalog, inventory, search, ownFilter, catFilter, sortMode, prices, wfmLookup]);
+  }, [catalog, inventory, search, ownFilter, catFilter, sortMode, minP, maxP, prices, wfmLookup]);
 
-  useEffect(() => { setPage(0); }, [search, catFilter, ownFilter, sortMode]);
+  useEffect(() => { setPage(0); }, [search, catFilter, ownFilter, sortMode, minPlat, maxPlat]);
 
   const totalPages = Math.ceil(filtered.length / MODS_PAGE_SIZE);
   const pageItems  = useMemo(
@@ -889,10 +971,42 @@ function ModsTab({ catalog: allCatalog, inventory, wfmLookup, prices, modCopiesM
           <button className={`fchip ${ownFilter === "notowned" ? "fchip-on" : ""}`} onClick={() => setOwnFilter("notowned")}>Not Owned</button>
           <span className="fbar-sep"/>
           <span className="fbar-label">Sort:</span>
-          <button className={`fchip ${sortMode === "qty"  ? "fchip-on" : ""}`} onClick={() => setSortMode("qty")}>Most Owned</button>
-          <button className={`fchip ${sortMode === "plat" ? "fchip-on" : ""}`} onClick={() => setSortMode("plat")}>Most Plat</button>
-          <button className={`fchip ${sortMode === "az"   ? "fchip-on" : ""}`} onClick={() => setSortMode("az")}>A–Z</button>
-          <button className={`fchip ${sortMode === "za"   ? "fchip-on" : ""}`} onClick={() => setSortMode("za")}>Z–A</button>
+          <button className={`fchip ${sortMode === "qty"      ? "fchip-on" : ""}`} onClick={() => setSortMode("qty")}>Most Owned</button>
+          <button className={`fchip ${sortMode === "plat"     ? "fchip-on" : ""}`} onClick={() => setSortMode("plat")}>Most Plat</button>
+          <button className={`fchip ${sortMode === "plat-asc" ? "fchip-on" : ""}`} onClick={() => setSortMode("plat-asc")}>Lowest Plat</button>
+          <button className={`fchip ${sortMode === "az"       ? "fchip-on" : ""}`} onClick={() => setSortMode("az")}>A–Z</button>
+          <button className={`fchip ${sortMode === "za"       ? "fchip-on" : ""}`} onClick={() => setSortMode("za")}>Z–A</button>
+          <span className="fbar-sep"/>
+          <div className="wfm-plat-filter" title="Filter mods & arcanes by platinum value range">
+            <span className="wfm-plat-label">🪙 Plat</span>
+            <input
+              className="wfm-plat-input"
+              type="text"
+              inputMode="numeric"
+              placeholder="Min"
+              value={minPlat}
+              onChange={e => setMinPlat(e.target.value.replace(/[^0-9]/g, ""))}
+            />
+            <span className="wfm-plat-sep">–</span>
+            <input
+              className="wfm-plat-input"
+              type="text"
+              inputMode="numeric"
+              placeholder="Max"
+              value={maxPlat}
+              onChange={e => setMaxPlat(e.target.value.replace(/[^0-9]/g, ""))}
+            />
+          </div>
+          {(minPlat !== "" || maxPlat !== "") && (
+            <button
+              className="wfm-filter-clear"
+              style={{ padding: "1px 6px", fontSize: 10, marginLeft: 4 }}
+              onClick={() => { setMinPlat(""); setMaxPlat(""); }}
+              title="Clear plat filter"
+            >
+              ✕
+            </button>
+          )}
         </div>
       </div>
 
@@ -1599,6 +1713,7 @@ const RivensTab = memo(function RivensTab({ rivens, catalog, wfmUsername, onAuct
   const [dispositions, setDispositions] = useState<Record<string, number>>({});
   const [sellTarget,   setSellTarget]   = useState<BlobRivenEntry | null>(null);
   const [sellVeiled,   setSellVeiled]   = useState<BlobRivenEntry | null>(null);
+  const [search,       setSearch]       = useState("");
 
   useEffect(() => {
     invoke<Record<string, number>>("get_weapon_dispositions")
@@ -1624,6 +1739,33 @@ const RivensTab = memo(function RivensTab({ rivens, catalog, wfmUsername, onAuct
   const revealed   = rivens.filter(r => r.riven_state === "revealed");
   const unlocked   = rivens.filter(r => r.riven_state === "unlocked" || (!r.riven_state && r.compat !== null));
 
+  const q = search.trim().toLowerCase();
+  const filteredUnlocked = useMemo(() => {
+    if (!q) return unlocked;
+    return unlocked.filter(r => {
+      const weaponName = (r.compat ? (pathToName[r.compat] ?? r.compat.split("/").pop() ?? r.compat) : "").toLowerCase();
+      const modName = (r.mod_name || rivenModName(r)).toLowerCase();
+      return weaponName.includes(q) || modName.includes(q);
+    });
+  }, [unlocked, q, pathToName]);
+
+  const filteredRevealed = useMemo(() => {
+    if (!q) return revealed;
+    return revealed.filter(r => {
+      const cat = rivenCategory(r.item_type).toLowerCase();
+      const challenge = formatChallengeName(r.challenge_type, r.challenge_complication).toLowerCase();
+      return cat.includes(q) || challenge.includes(q);
+    });
+  }, [revealed, q]);
+
+  const filteredUnrevealed = useMemo(() => {
+    if (!q) return unrevealed;
+    return unrevealed.filter(r => {
+      const cat = rivenCategory(r.item_type).toLowerCase();
+      return cat.includes(q);
+    });
+  }, [unrevealed, q]);
+
   const sellTargetWeaponName = sellTarget?.compat
     ? (pathToName[sellTarget.compat] ?? sellTarget.compat.split("/").pop() ?? sellTarget.compat)
     : "";
@@ -1632,13 +1774,30 @@ const RivensTab = memo(function RivensTab({ rivens, catalog, wfmUsername, onAuct
 
   return (
     <div className="rivens-tab">
+      <div className="market-header" style={{ padding: "6px 8px 8px" }}>
+        <input
+          className="foundry-search"
+          style={{ width: 220 }}
+          placeholder="Search rivens by weapon or name…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        {search && (
+          <button
+            className="wfm-filter-clear"
+            style={{ marginLeft: 6, padding: "2px 8px", fontSize: 11 }}
+            onClick={() => setSearch("")}
+          >
+            ✕ Reset
+          </button>
+        )}
+      </div>
 
-
-      {unlocked.length > 0 && (
+      {filteredUnlocked.length > 0 && (
         <section>
-          <div className="rivens-section-header">Riven ({unlocked.length})</div>
+          <div className="rivens-section-header">Riven ({filteredUnlocked.length})</div>
           <div className="rivens-list">
-            {unlocked.map((r, i) => {
+            {filteredUnlocked.map((r, i) => {
               const weaponName = r.compat ? (pathToName[r.compat] ?? r.compat.split("/").pop() ?? r.compat) : "Unknown";
               const disp = r.compat ? (dispositions[r.compat] ?? 1.0) : 1.0;
               const cat  = rivenCategory(r.item_type);
@@ -1676,11 +1835,11 @@ const RivensTab = memo(function RivensTab({ rivens, catalog, wfmUsername, onAuct
         </section>
       )}
 
-      {revealed.length > 0 && (
+      {filteredRevealed.length > 0 && (
         <section>
-          <div className="rivens-section-header">Revealed Riven ({revealed.length})</div>
+          <div className="rivens-section-header">Revealed Riven ({filteredRevealed.length})</div>
           <div className="rivens-list">
-            {revealed.map((r, i) => {
+            {filteredRevealed.map((r, i) => {
               const cat = rivenCategory(r.item_type);
               const challenge = formatChallengeName(r.challenge_type, r.challenge_complication);
               return (
@@ -1696,11 +1855,11 @@ const RivensTab = memo(function RivensTab({ rivens, catalog, wfmUsername, onAuct
         </section>
       )}
 
-      {unrevealed.length > 0 && (
+      {filteredUnrevealed.length > 0 && (
         <section>
-          <div className="rivens-section-header">Unrevealed Riven ({unrevealed.reduce((s, r) => s + r.count, 0)})</div>
+          <div className="rivens-section-header">Unrevealed Riven ({filteredUnrevealed.reduce((s, r) => s + r.count, 0)})</div>
           <div className="rivens-list">
-            {unrevealed.map((r, i) => (
+            {filteredUnrevealed.map((r, i) => (
               <div key={i} className="riven-card riven-veiled">
                 <div className="riven-card-header">
                   <span className="riven-weapon">{rivenCategory(r.item_type)} Riven Mod</span>

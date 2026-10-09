@@ -24,6 +24,7 @@ export const FOUNDRY_FILTERS_DEFAULT: FoundryFilters = {
 export const MARKET_FILTERS_DEFAULT: MarketFilters = {
   category: "all",
   search: "", ownership: [], conditions: [], vault: [], sortMode: "ducats",
+  minPlat: null, maxPlat: null,
   activeMarketTab: "sets",
 };
 

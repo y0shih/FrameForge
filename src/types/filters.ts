@@ -27,7 +27,9 @@ export interface MarketFilters {
   ownership: ("owned" | "notowned")[];
   conditions: ("dupes" | "itemowned" | "fullset" | "hasparts")[];
   vault: ("vaulted" | "unvaulted")[];
-  sortMode: "plat" | "ducats" | "az" | "za";
+  sortMode: "plat" | "plat-asc" | "ducats" | "az" | "za";
+  minPlat?: number | null;
+  maxPlat?: number | null;
   activeMarketTab: "trading" | "sets" | "mods" | "rivens" | "sisters";
 }
 

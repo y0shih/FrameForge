@@ -2096,3 +2096,54 @@ html, body, #root { height: 100%; font-family: -apple-system, BlinkMacSystemFont
 .relic-text-reward.relic-rarity-rare { color: #f0c040; }
 .relic-text-reward.relic-rarity-uncommon { color: #c0c0c0; }
 .relic-text-reward.relic-rarity-common { color: var(--muted); }
+
+/* ── Universal Plat Value Filter Bar ── */
+.wfm-plat-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(48, 54, 61, 0.7);
+  border-radius: 5px;
+  padding: 2px 6px;
+}
+.wfm-plat-label {
+  font-size: 11px;
+  color: #c0a060;
+  font-weight: 700;
+  margin-right: 2px;
+  user-select: none;
+}
+.wfm-plat-input {
+  width: 44px;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 11px;
+  color: var(--text);
+  padding: 1px 2px;
+  text-align: center;
+}
+.wfm-plat-input::placeholder {
+  color: rgba(139, 148, 158, 0.55);
+}
+.wfm-plat-sep {
+  color: var(--muted);
+  font-size: 11px;
+  user-select: none;
+}
+.wfm-filter-clear {
+  background: none;
+  border: 1px solid rgba(248, 81, 73, 0.4);
+  color: var(--red);
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+.wfm-filter-clear:hover {
+  background: rgba(248, 81, 73, 0.12);
+  border-color: var(--red);
+}
+
