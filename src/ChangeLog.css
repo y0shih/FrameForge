@@ -120,3 +120,36 @@
   .log-feed { animation: none; }
   .log-row-arrival-wrap { grid-template-rows: minmax(0, 1fr); opacity: 1; animation: none; }
 }
+
+.log-footer-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  height: 20px;
+  cursor: pointer;
+  color: var(--muted);
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+}
+.log-footer-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+.log-footer-btn:active {
+  transform: translateY(1px);
+}
+.log-footer-btn.active {
+  background: rgba(168, 85, 247, 0.2);
+  border-color: rgba(168, 85, 247, 0.5);
+  box-shadow: 0 0 6px rgba(168, 85, 247, 0.3);
+}
+.log-footer-icon {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  display: block;
+}

@@ -19,6 +19,7 @@ CLAUDE.md
 # Release tooling and personal scripts — internal, not for contributors
 build-and-release.bat
 backup-memory.bat
+start-market-dev.bat
 pnpm-workspace.yaml
 
 # Stray backup copies of source files — git history already covers this

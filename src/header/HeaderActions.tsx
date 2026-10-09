@@ -3,7 +3,10 @@ interface HeaderActionsProps {
   onOpenSettings: () => void;
 }
 
-export default function HeaderActions({ onOpenExternalUrl, onOpenSettings }: HeaderActionsProps) {
+export default function HeaderActions({
+  onOpenExternalUrl,
+  onOpenSettings,
+}: HeaderActionsProps) {
   return (
     <>
       <button className="btn-icon-brand btn-discord" title="Join our Discord" onClick={() => onOpenExternalUrl("https://discord.gg/7NMsN9J8vy")}>

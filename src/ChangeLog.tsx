@@ -47,6 +47,8 @@ interface ChangeLogProps {
   onItemClick: (uniqueName: string) => void;
   onChangeLogClick: () => void;
   onCategoryClick: (category: string) => void;
+  rivenSellOpen?: boolean;
+  onToggleRivenSell?: () => void;
 }
 
 function getLatestChangeBatch(changes: ChangeLogEntry[]) {
@@ -110,6 +112,7 @@ function ChangeRow({
 function ChangeLogHeader({
   expanded, showArrival, arrivalToken, positiveChanges, negativeChanges, lastScanAt,
   clockFormat, systemLocale, onExpandedChange, onChangeLogClick,
+  rivenSellOpen, onToggleRivenSell,
 }: {
   expanded: boolean;
   showArrival: boolean;
@@ -121,6 +124,8 @@ function ChangeLogHeader({
   systemLocale: string;
   onExpandedChange: (expanded: boolean) => void;
   onChangeLogClick: () => void;
+  rivenSellOpen?: boolean;
+  onToggleRivenSell?: () => void;
 }) {
   return (
     <div className="log-header" onClick={() => onExpandedChange(!expanded)}>
@@ -131,6 +136,23 @@ function ChangeLogHeader({
       </span>}
       <span className="log-status-divider" aria-hidden="true">·</span>
       <span className="log-last-scan">last scan {lastScanAt == null ? "not yet" : formatUnixTime(lastScanAt, clockFormat, systemLocale)}</span>
+      {onToggleRivenSell && (
+        <>
+          <span className="log-status-divider" aria-hidden="true">·</span>
+          <button
+            type="button"
+            className={`log-footer-btn log-riven-toggle-btn ${rivenSellOpen ? "active" : ""}`}
+            title="Toggle Riven Sell Copy Sidebar"
+            aria-label="Toggle Riven Sell Copy Sidebar"
+            onClick={event => {
+              event.stopPropagation();
+              onToggleRivenSell();
+            }}
+          >
+            <img src="/riven-icon.png" alt="" className="log-footer-icon" />
+          </button>
+        </>
+      )}
     </div>
   );
 }
@@ -138,6 +160,7 @@ function ChangeLogHeader({
 export default function ChangeLog({
   changes, catalog, clockFormat, systemLocale,
   arrivalToken, lastScanAt, onItemClick, onChangeLogClick, onCategoryClick,
+  rivenSellOpen, onToggleRivenSell,
 }: ChangeLogProps) {
   const [expanded, onExpandedChange] = useState(false);
   const [height, onHeightChange] = useState(270);
@@ -232,6 +255,8 @@ export default function ChangeLog({
         systemLocale={systemLocale}
         onExpandedChange={onExpandedChange}
         onChangeLogClick={onChangeLogClick}
+        rivenSellOpen={rivenSellOpen}
+        onToggleRivenSell={onToggleRivenSell}
       />
       {!expanded && feedChange && <div
         className="log-feed"

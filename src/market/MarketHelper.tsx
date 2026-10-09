@@ -14,8 +14,9 @@ import type { CatalogItem, CraftingJob, InventoryItem, RecipeComponent, RecipeMa
 import type { MarketFilters } from "../types/filters";
 import type { FilterPresetModule, FilterPresetSettings } from "../types/filterPresets";
 import type { ModCopy } from "../types/inventory";
-import type { BlobRivenEntry, BlobRivenStat, WfmItemInfo, WfmPrice, WfmPriceUpdate, WfmRivenAttribute } from "../types/market";
+import type { BlobRivenEntry, BlobRivenStat, RivenSellQueueItem, WfmItemInfo, WfmPrice, WfmPriceUpdate, WfmRivenAttribute } from "../types/market";
 import type { WfmCreateOrderArgs, WfmCreateRivenAuctionArgs, WfmSession } from "../types/tauri";
+import RivenSellTemplateModal from "./RivenSellTemplateModal";
 import polMadurai  from "../assets/polarity/madurai.svg";
 import polVazarin  from "../assets/polarity/vazarin.svg";
 import polNaramon  from "../assets/polarity/naramon.svg";
@@ -36,6 +37,7 @@ interface Props {
   onFilterPresetsChange: Dispatch<SetStateAction<FilterPresetSettings>>;
   onOpenSettings: (module: FilterPresetModule) => void;
   wfmRecordSales: boolean;
+  onAddToSellSidebar?: (items: RivenSellQueueItem[]) => void;
 }
 
 function toggle<T>(arr: T[], val: T): T[] {
@@ -165,7 +167,7 @@ function SetCard({ setKey, parts, parentItem, setPrice, setPriceLoading, pricesF
 
 // ─── Market Helper ────────────────────────────────────────────────────────────
 
-export default function MarketHelper({ inventory, refreshKey, crafting, onWfmLoginChange, modCopiesMap = {}, filters, onFiltersChange, filterPresets, onFilterPresetsChange, onOpenSettings, wfmRecordSales }: Props) {
+export default function MarketHelper({ inventory, refreshKey, crafting, onWfmLoginChange, modCopiesMap = {}, filters, onFiltersChange, filterPresets, onFilterPresetsChange, onOpenSettings, wfmRecordSales, onAddToSellSidebar }: Props) {
   const { catalog } = useCatalog();
   const { wfmItems, wfmPrices: sharedPrices } = useMarketData();
   const [prices, setPrices]               = useState<Map<string, WfmPrice>>(new Map());
@@ -520,7 +522,7 @@ export default function MarketHelper({ inventory, refreshKey, crafting, onWfmLog
       )}
 
       {activeMarketTab === "rivens" && (
-        <RivensTab rivens={rivens} catalog={catalog} wfmUsername={wfmUsername} onAuctionPosted={() => setAuctionRefreshKey(k => k + 1)} />
+        <RivensTab rivens={rivens} catalog={catalog} wfmUsername={wfmUsername} onAuctionPosted={() => setAuctionRefreshKey(k => k + 1)} onAddToSellSidebar={onAddToSellSidebar} />
       )}
 
       {activeMarketTab === "sisters" && (
@@ -797,7 +799,7 @@ function ModsTab({ catalog: allCatalog, inventory, wfmLookup, prices, modCopiesM
 
 // ─── Rivens tab ───────────────────────────────────────────────────────────────
 
-function rivenCategory(itemType: string): string {
+export function rivenCategory(itemType: string): string {
   if (itemType.includes("Melee"))   return "Melee";
   if (itemType.includes("Rifle"))   return "Rifle";
   if (itemType.includes("Pistol") || itemType.includes("Kitgun")) return "Pistol";
@@ -982,7 +984,7 @@ const RIVEN_NAME_PARTS: Record<string, { p: string; s: string }> = {
 // 2 buffs → CoreSuffix         (higher's prefix + lower's suffix, no dash)
 // 3 buffs → Prefix-CoreSuffix  (highest's prefix - second's prefix + lowest's suffix)
 // Returns lowercase (WFM format); capitalize first letter for display.
-function rivenModName(riven: BlobRivenEntry): string {
+export function rivenModName(riven: BlobRivenEntry): string {
   if (riven.buffs.length === 0) return "";
   const sorted = [...riven.buffs].sort((a, b) => b.value - a.value);
   const hi  = RIVEN_NAME_PARTS[sorted[0].tag];
@@ -997,7 +999,7 @@ function rivenModName(riven: BlobRivenEntry): string {
   return `${hi.p.toLowerCase()}${suffix}`;
 }
 
-function rivenStatLabel(stat: BlobRivenStat, positive: boolean, disposition: number, category: string, numBuffs: number, numCurses: number, rank: number): string {
+export function rivenStatLabel(stat: BlobRivenStat, positive: boolean, disposition: number, category: string, numBuffs: number, numCurses: number, rank: number): string {
   const frac  = stat.value / 0x3FFFFFFF; // 1073741823 — matches RivenParser.js rivenIntToFloat
   const roll  = 0.9 + frac * 0.2;
   const entry = RIVEN_STAT[stat.tag];
@@ -1100,7 +1102,7 @@ function wfmPolarity(pol: string | null): string {
 }
 
 // Polarity display: icon + human name
-const POLARITY_DISPLAY: Record<string, { icon: string; name: string }> = {
+export const POLARITY_DISPLAY: Record<string, { icon: string; name: string }> = {
   AP_ATTACK:  { icon: polMadurai,  name: "Madurai"  },
   AP_DEFENSE: { icon: polVazarin,  name: "Vazarin"  },
   AP_TACTIC:  { icon: polNaramon,  name: "Naramon"  },
@@ -1416,15 +1418,18 @@ function VeiledSellModal({ category, count, onClose, onSuccess }: VeiledSellModa
 }
 
 
-const RivensTab = memo(function RivensTab({ rivens, catalog, wfmUsername, onAuctionPosted }: {
+const RivensTab = memo(function RivensTab({ rivens, catalog, wfmUsername, onAuctionPosted, onAddToSellSidebar }: {
   rivens: BlobRivenEntry[];
   catalog: CatalogItem[];
   wfmUsername: string | null;
   onAuctionPosted?: () => void;
+  onAddToSellSidebar?: (items: RivenSellQueueItem[]) => void;
 }) {
   const [dispositions, setDispositions] = useState<Record<string, number>>({});
   const [sellTarget,   setSellTarget]   = useState<BlobRivenEntry | null>(null);
   const [sellVeiled,   setSellVeiled]   = useState<BlobRivenEntry | null>(null);
+  const [selectedIds,  setSelectedIds]  = useState<Set<string>>(new Set());
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
 
   useEffect(() => {
     invoke<Record<string, number>>("get_weapon_dispositions")
@@ -1462,15 +1467,60 @@ const RivensTab = memo(function RivensTab({ rivens, catalog, wfmUsername, onAuct
 
       {unlocked.length > 0 && (
         <section>
-          <div className="rivens-section-header">Riven ({unlocked.length})</div>
+          <div className="rivens-section-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span>Riven ({unlocked.length})</span>
+            {selectedIds.size > 0 && (
+              <button
+                className="btn-create-sell-template"
+                onClick={() => setShowTemplateModal(true)}
+              >
+                ✨ Create Sell Template ({selectedIds.size})
+              </button>
+            )}
+          </div>
+
+          {selectedIds.size > 0 && (
+            <div className="rivens-bulk-bar">
+              <span>{selectedIds.size} riven{selectedIds.size > 1 ? "s" : ""} selected</span>
+              <button
+                className="btn-create-sell-template"
+                onClick={() => setShowTemplateModal(true)}
+              >
+                Create Sell Template ({selectedIds.size})
+              </button>
+              <button
+                className="btn-clear-selection"
+                onClick={() => setSelectedIds(new Set())}
+              >
+                Clear
+              </button>
+            </div>
+          )}
+
           <div className="rivens-list">
             {unlocked.map((r, i) => {
               const weaponName = r.compat ? (pathToName[r.compat] ?? r.compat.split("/").pop() ?? r.compat) : "Unknown";
               const disp = r.compat ? (dispositions[r.compat] ?? 1.0) : 1.0;
               const cat  = rivenCategory(r.item_type);
+              const rivenKey = r.item_id || `unlocked-${i}`;
+              const isSelected = selectedIds.has(rivenKey);
               return (
-                <div key={r.item_id || i} className="riven-card">
+                <div key={r.item_id || i} className={`riven-card${isSelected ? " selected" : ""}`}>
                   <div className="riven-card-header">
+                    <input
+                      type="checkbox"
+                      className="riven-select-cb"
+                      checked={isSelected}
+                      onChange={() => {
+                        setSelectedIds(prev => {
+                          const next = new Set(prev);
+                          if (next.has(rivenKey)) next.delete(rivenKey);
+                          else next.add(rivenKey);
+                          return next;
+                        });
+                      }}
+                      title="Select for sell template"
+                    />
                     <span className="riven-weapon">{weaponName}{(() => { const mn = (r.mod_name || rivenModName(r)); return mn ? <> <span className="riven-mod-name">{mn.replace(/^./, c => c.toUpperCase())}</span></> : null; })()}</span>
                     <button className="riven-sell-btn" title={wfmUsername ? "Post auction on warframe.market" : "Login to WFM to sell"}
                       onClick={() => { if (wfmUsername) setSellTarget(r); else alert("Log in to warframe.market first (Market → Trading tab)."); }}>
@@ -1558,6 +1608,19 @@ const RivensTab = memo(function RivensTab({ rivens, catalog, wfmUsername, onAuct
           count={sellVeiled.count}
           onClose={() => setSellVeiled(null)}
           onSuccess={() => {}}
+        />
+      )}
+      {showTemplateModal && (
+        <RivenSellTemplateModal
+          open={showTemplateModal}
+          selectedRivens={unlocked.filter((r, i) => selectedIds.has(r.item_id || `unlocked-${i}`))}
+          catalog={catalog}
+          dispositions={dispositions}
+          onClose={() => setShowTemplateModal(false)}
+          onAddToSidebar={(items) => {
+            onAddToSellSidebar?.(items);
+            setSelectedIds(new Set());
+          }}
         />
       )}
     </div>
